@@ -2025,6 +2025,30 @@
     $("g-pin").focus();
   }
   function hideGate(){ $("gate").classList.add("hidden"); }
+  function showSetup(){
+    $("gate").classList.remove("hidden");
+    $("g-msg").textContent = "첫 설정 — 코드를 만들어주세요";
+    $("g-pin").hidden = true; $("g-go").hidden = true;
+    $("g-hint").innerHTML =
+      '<div style="display:flex;flex-direction:column;gap:10px;align-items:center;margin-top:6px">'+
+        '<input id="su-owner" type="tel" inputmode="numeric" maxlength="8" placeholder="사장 코드 (4자리)" style="width:220px;text-align:center;font-size:17px;letter-spacing:.15em;font-weight:700;padding:11px;border:1px solid var(--line);border-radius:11px;background:var(--surface);color:var(--ink)">'+
+        '<input id="su-staff" type="tel" inputmode="numeric" maxlength="8" placeholder="직원 코드 (4자리)" style="width:220px;text-align:center;font-size:17px;letter-spacing:.15em;font-weight:700;padding:11px;border:1px solid var(--line);border-radius:11px;background:var(--surface);color:var(--ink)">'+
+        '<button id="su-go" style="width:220px;margin-top:2px;padding:13px;border:0;border-radius:12px;background:var(--brand);color:#fff;font-size:15px;font-weight:800">시작하기</button>'+
+      '</div>';
+    $("su-go").onclick=function(){
+      var o=($("su-owner").value||"").trim(), s=($("su-staff").value||"").trim();
+      if(o.length<4){ $("g-msg").textContent="사장 코드는 4자리 이상으로"; return; }
+      if(s && s.length<4){ $("g-msg").textContent="직원 코드는 4자리 이상으로"; return; }
+      if(o===s){ $("g-msg").textContent="사장/직원 코드는 다르게 정해주세요"; return; }
+      $("su-go").textContent="저장 중…";
+      db.doc("config/access").set({ownerPin:o, staffPin:s||"", createdAt:nowISO()}).then(function(){
+        accessCfg.ownerPin=o; accessCfg.staffPin=s||"";
+        isOwner=true; rememberRole("owner", o);
+        enterApp();
+        showToast("설정 완료 · 직원에겐 직원 코드만 알려주세요");
+      }).catch(function(){ $("g-msg").textContent="저장 실패 — 다시 눌러주세요"; $("su-go").textContent="시작하기"; });
+    };
+  }
   function submitPin(){
     var v=($("g-pin").value||"").trim();
     if(v && accessCfg.ownerPin && v===accessCfg.ownerPin){ isOwner=true; rememberRole("owner",v); enterApp(); return; }
@@ -2081,12 +2105,8 @@
       var savedRole=null, savedPin=null;
       try{ savedRole=localStorage.getItem("ds_role"); savedPin=localStorage.getItem("ds_pin"); }catch(e){}
 
-      if(!accessCfg.ownerPin && !accessCfg.staffPin){
-        // 최초 실행 — 이 접속을 사장으로, PIN 설정 유도
-        isOwner = true;
-        db.doc("config/access").set({ownerPin:"", staffPin:"", createdAt:nowISO()}).catch(function(){});
-        enterApp();
-        setTimeout(function(){ showToast("먼저 사장/직원 코드를 정하세요"); openPinSettings(); }, 900);
+      if(!accessCfg.ownerPin){
+        showSetup();   // 최초 실행 — 코드부터 만들기
         return;
       }
       if(savedRole==="owner" && savedPin && savedPin===accessCfg.ownerPin){ isOwner=true; enterApp(); return; }
