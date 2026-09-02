@@ -387,9 +387,8 @@
         <button class="linkbtn owner-only" id="stocktakebtn">재고 실사 (기준점 입력)</button>
         <button class="linkbtn owner-only" id="costbtn">주류 원가 일괄 입력</button>
         <button class="linkbtn owner-only" id="csvbtn" hidden>재고 전체 CSV로 내려받기</button>
-        <button class="linkbtn owner-only" id="pinbtn">PIN 설정 (사장/직원)</button>
-        <button class="linkbtn" id="lockbtn" hidden>🔒 이 기기를 직원 전용 화면으로 고정</button>
-        <button class="linkbtn" id="logoutbtn" style="color:var(--ink-dim)">로그아웃 (PIN 다시 입력)</button>
+        <button class="linkbtn owner-only" id="pinbtn">코드 설정 (사장/직원)</button>
+        <button class="linkbtn" id="logoutbtn" style="color:var(--ink-dim)">로그아웃 (코드 다시 입력)</button>
       </div>
     </div>
   </div>
@@ -520,22 +519,10 @@
   // ---------- state ----------
   var db=null, dl=null;
   var items=[], logEntries=[], closings=[];
-  var isOwner=false, previewStaff=false, costMap={}, costReady=false, openDetailId=null, seedingActive=false, seededOnce=false;
-  function ownerView(){ return isOwner && !previewStaff && !staffLock; }
-
-  // 직원 전용 URL 판별: ?view=staff / #staff (부모 페이지 referrer 포함) → 이 기기에서 직원 화면 고정
-  var staffLock = (function(){
-    var src = "";
-    try{ src = (location.search||"")+" "+(location.hash||"")+" "+(document.referrer||""); }catch(e){ src = ""; }
-    var wantStaff = /(?:[?&#]|view=)staff\b/i.test(src);
-    var wantOwner = /(?:[?&#]|view=)owner\b/i.test(src);
-    try{
-      if(wantStaff) localStorage.setItem("ds_view_lock","staff");
-      else if(wantOwner) localStorage.removeItem("ds_view_lock");
-      return localStorage.getItem("ds_view_lock") === "staff";
-    }catch(e){ return wantStaff && !wantOwner; }
-  })();
-  if(staffLock) previewStaff = true;
+  // 역할은 로그인 코드로 결정 (사장 코드 / 직원 코드)
+  var isOwner=false, previewStaff=false, staffLock=false;
+  var costMap={}, costReady=false, openDetailId=null, seedingActive=false, seededOnce=false;
+  function ownerView(){ return isOwner && !previewStaff; }
   var filterCat="all", showShort=false, showOpen=false, q="";
   var currentView="inv", tables={}, todaySales=null, attToday=null;
   var me = "";
@@ -1920,12 +1907,6 @@
   Array.prototype.forEach.call(document.querySelectorAll(".tabnav [data-v]"), function(btn){
     btn.addEventListener("click", function(){ switchView(btn.getAttribute("data-v")); });
   });
-  $("lockbtn").addEventListener("click", function(){
-    try{ localStorage.setItem("ds_view_lock","staff"); }catch(e){}
-    staffLock=true; previewStaff=true; applyMode(); render();
-    if(openDetailId) openDetail(openDetailId);
-    showToast("이 기기는 이제 직원 화면으로 열립니다");
-  });
   $("csvbtn").addEventListener("click", function(){
     downloadCSV(items.slice().sort(function(a,b){return (a.order||0)-(b.order||0);}), "다이닝사운드_재고");
   });
@@ -1998,25 +1979,15 @@
 
   function applyMode(){
     document.body.classList.toggle("owner", ownerView());
-    var badge=$("modebadge"), lb=$("lockbtn");
-    if(lb) lb.hidden = !(isOwner && previewStaff && !staffLock);
-    if(staffLock){
-      badge.textContent = isOwner ? "직원 화면 · 사장님은 탭하면 해제" : "직원 화면";
-      badge.style.cursor = isOwner ? "pointer" : "default";
-      return;
-    }
+    var badge=$("modebadge");
+    if(!badge) return;
     if(isOwner){
-      badge.textContent = previewStaff ? "직원 화면 미리보기 · 탭하면 복귀" : "사장 모드 · 탭하면 직원 화면";
+      badge.textContent = previewStaff ? "직원 화면 미리보기 · 탭하면 복귀" : "사장";
       badge.style.cursor = "pointer";
     } else {
-      badge.textContent = "직원 모드";
+      badge.textContent = "직원";
+      badge.style.cursor = "default";
     }
-  }
-  function unlockStaffDevice(){
-    try{ localStorage.removeItem("ds_view_lock"); }catch(e){}
-    staffLock=false; previewStaff=false;
-    applyMode(); render(); if(currentView==="tables") renderTables();
-    showToast("이 기기가 사장 모드로 전환됐어요");
   }
 
   // ---------- 다운로드 (일반 브라우저) ----------
@@ -2034,15 +2005,10 @@
     });
   }
 
-  // ---------- 모드 뱃지 ----------
+  // ---------- 모드 뱃지 (사장이 직원 화면 잠깐 미리보기) ----------
   function wireBadge(){
-    var unlockArmed=false;
     $("modebadge").addEventListener("click", function(){
       if(!isOwner) return;
-      if(staffLock){
-        if(!unlockArmed){ unlockArmed=true; $("modebadge").textContent="한 번 더 탭하면 사장 모드로"; return; }
-        unlockStaffDevice(); return;
-      }
       previewStaff = !previewStaff;
       applyMode(); render();
       if(openDetailId) openDetail(openDetailId);
@@ -2053,9 +2019,9 @@
   function rememberRole(r, p){ try{ localStorage.setItem("ds_role", r); localStorage.setItem("ds_pin", p); }catch(e){} }
   function showGate(){
     $("gate").classList.remove("hidden");
-    $("g-msg").textContent = "PIN을 입력하세요";
+    $("g-msg").textContent = "코드를 입력하세요";
     $("g-pin").hidden = false; $("g-go").hidden = false;
-    $("g-hint").textContent = "사장 PIN / 직원 PIN 이 다릅니다";
+    $("g-hint").textContent = "사장 코드 / 직원 코드";
     $("g-pin").focus();
   }
   function hideGate(){ $("gate").classList.add("hidden"); }
@@ -2063,7 +2029,7 @@
     var v=($("g-pin").value||"").trim();
     if(v && accessCfg.ownerPin && v===accessCfg.ownerPin){ isOwner=true; rememberRole("owner",v); enterApp(); return; }
     if(v && accessCfg.staffPin && v===accessCfg.staffPin){ isOwner=false; rememberRole("staff",v); enterApp(); return; }
-    var p=$("g-pin"); p.classList.add("wrong"); p.value=""; $("g-msg").textContent="PIN이 맞지 않아요. 다시 입력하세요.";
+    var p=$("g-pin"); p.classList.add("wrong"); p.value=""; $("g-msg").textContent="코드가 맞지 않아요";
   }
   function logout(){
     try{ localStorage.removeItem("ds_role"); localStorage.removeItem("ds_pin"); }catch(e){}
@@ -2072,17 +2038,17 @@
   function openPinSettings(){
     if(!ownerView()) return;
     var b=$("sheetbody");
-    b.innerHTML = '<h3>PIN 설정</h3><div class="sub">직원에겐 <b>직원 PIN</b>만 알려주세요. 사장 PIN으로 들어오면 원가·매출·근태수정이 보입니다.</div>'+
-      '<div class="field"><label>사장 PIN (필수)</label><input id="pin-owner" type="tel" inputmode="numeric" maxlength="8" value="'+esc(accessCfg.ownerPin||"")+'"></div>'+
-      '<div class="field"><label>직원 PIN</label><input id="pin-staff" type="tel" inputmode="numeric" maxlength="8" value="'+esc(accessCfg.staffPin||"")+'"></div>'+
+    b.innerHTML = '<h3>코드 설정</h3><div class="sub">직원에겐 <b>직원 코드</b>만 알려주세요. 사장 코드로 들어오면 원가·매출·근태 수정이 보입니다.</div>'+
+      '<div class="field"><label>사장 코드 (필수)</label><input id="pin-owner" type="tel" inputmode="numeric" maxlength="8" value="'+esc(accessCfg.ownerPin||"")+'"></div>'+
+      '<div class="field"><label>직원 코드</label><input id="pin-staff" type="tel" inputmode="numeric" maxlength="8" value="'+esc(accessCfg.staffPin||"")+'"></div>'+
       '<button class="savebtn" id="pin-save">저장</button>';
     $("pin-save").onclick=function(){
       var o=($("pin-owner").value||"").trim(), s=($("pin-staff").value||"").trim();
-      if(!o){ showToast("사장 PIN은 필수예요"); return; }
-      if(o===s){ showToast("사장/직원 PIN은 달라야 해요"); return; }
+      if(!o){ showToast("사장 코드는 필수예요"); return; }
+      if(o===s){ showToast("사장/직원 코드는 달라야 해요"); return; }
       db.doc("config/access").set({ownerPin:o, staffPin:s, updatedAt:nowISO()}, {merge:true}).then(function(){
         accessCfg.ownerPin=o; accessCfg.staffPin=s; rememberRole("owner", o);
-        closeSheet(); showToast("PIN 저장됐어요");
+        closeSheet(); showToast("코드 저장됐어요");
       }).catch(function(){ showToast("저장 실패"); });
     };
     openSheet();
@@ -2120,7 +2086,7 @@
         isOwner = true;
         db.doc("config/access").set({ownerPin:"", staffPin:"", createdAt:nowISO()}).catch(function(){});
         enterApp();
-        setTimeout(function(){ showToast("먼저 사장/직원 PIN을 정하세요"); openPinSettings(); }, 900);
+        setTimeout(function(){ showToast("먼저 사장/직원 코드를 정하세요"); openPinSettings(); }, 900);
         return;
       }
       if(savedRole==="owner" && savedPin && savedPin===accessCfg.ownerPin){ isOwner=true; enterApp(); return; }
