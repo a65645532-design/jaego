@@ -1276,6 +1276,8 @@
           wrap.innerHTML =
             '<div style="font-size:12px;color:var(--ink-dim);font-weight:700;margin:12px 0 6px">매출 날짜 (전날 매출이면 변경)</div>'+
             '<input id="t-date" type="date" value="'+localISO(new Date())+'" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--ground);margin-bottom:10px">'+
+            '<div style="font-size:12px;color:var(--ink-dim);font-weight:700;margin:0 0 6px">손님 메모 (선택)</div>'+
+            '<textarea id="t-memo" placeholder="예: 4명 · 위스키 좋아함 · 재방문 · 생일" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--ground);font-size:13.5px;min-height:46px;resize:vertical;margin-bottom:10px"></textarea>'+
             '<div style="font-size:12px;color:var(--ink-dim);font-weight:700;margin:0 0 7px">결제 수단</div>'+
             '<div class="row2">'+
               '<button class="savebtn" data-pay="카드" style="background:var(--surface-2);color:var(--ink)">카드</button>'+
@@ -1300,9 +1302,10 @@
         var tot=linesTotal(lines), soldLines=lines.slice();
         var today=localISO(new Date());
         var date=($("t-date") && $("t-date").value) || today;
+        var memo=($("t-memo") && $("t-memo").value.trim()) || "";
         var wrap=$("t-donewrap");
         if(wrap) wrap.innerHTML='<div class="sub" style="padding:8px 0">처리 중…</div>';
-        recordSale(n, soldLines, tot, pay, date).then(function(){
+        recordSale(n, soldLines, tot, pay, date, memo).then(function(){
           if(date===today) return applyStockForSale(soldLines, n);  // 과거 날짜는 재고 자동차감 안 함
         }).then(function(){
           lines.length=0; persist();
@@ -1366,12 +1369,12 @@
     draw("");
   }
 
-  function recordSale(n, lines, total, pay, dateOverride){
+  function recordSale(n, lines, total, pay, dateOverride, memo){
     if(!db) return Promise.reject({code:"unavailable", message:"동기화 연결 안 됨"});
     var date = dateOverride || localISO(new Date());
     return appendDailyDoc("sales/"+date, function(d){
       var orders = d.orders || [];
-      orders.push({ t:n, at:nowISO(), by:me||"", total:total, pay:pay||"기타",
+      orders.push({ t:n, at:nowISO(), by:me||"", total:total, pay:pay||"기타", memo:memo||"",
         lines: lines.map(function(l){ return {name:l.name, opt:l.opt||"", qty:l.qty, price:l.price}; }) });
       return { date:date, orders:orders, total:(d.total||0)+total, count:(d.count||0)+1, updatedAt:nowISO() };
     });
@@ -1552,7 +1555,8 @@
         '<div style="font-size:11.5px;font-weight:700;color:var(--ink-dim);margin:16px 0 4px">건별 (최근순)</div>'+
         (d.orders||[]).slice().reverse().map(function(o){
           var idx=(d.orders||[]).indexOf(o);
-          return '<div class="kv"><span>'+(o.t==="직접입력"?"직접입력":o.t+"번")+' · '+esc(o.by||"?")+' · '+esc(o.pay||"기타")+' · '+timeShort(o.at)+'</span>'+
+          return '<div class="kv" style="align-items:flex-start"><span>'+(o.t==="직접입력"?"직접입력":o.t+"번")+' · '+esc(o.by||"?")+' · '+esc(o.pay||"기타")+' · '+timeShort(o.at)+
+            (o.memo?'<br><span style="color:var(--ink-dim);font-weight:400">📝 '+esc(o.memo)+'</span>':'')+'</span>'+
             '<b>'+won(o.total)+(canEdit?' <button class="tl-x" data-delorder="'+idx+'" title="이 건 삭제">✕</button>':'')+'</b></div>';
         }).join("")+
         (canEdit && (d.orders||[]).length ? '<button class="delbtn" id="sale-delall" style="margin-top:16px">이 날짜 매출 전체 삭제</button>' : '');
