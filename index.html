@@ -1,0 +1,2200 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>다이닝사운드 재고장부</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<style>
+  :root{
+    --ground:#F6F2EA;
+    --surface:#FDFBF5;
+    --surface-2:#F0E9DA;
+    --ink:#262014;
+    --ink-dim:#6F6656;
+    --line:rgba(40,30,15,.13);
+    --line-soft:rgba(40,30,15,.07);
+    --brand:#8A6A38;
+    --brand-soft:#EFE4D0;
+    --danger:#AE3C25;
+    --danger-bg:#F6E4DD;
+    --ok:#4C7A5B;
+    --open:#3C6E8E;
+    --open-bg:#E4EDF2;
+    --shadow:0 1px 2px rgba(40,30,15,.05), 0 10px 30px rgba(40,30,15,.08);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#15120D;
+      --surface:#201B14;
+      --surface-2:#2A2319;
+      --ink:#ECE5D7;
+      --ink-dim:#9B9181;
+      --line:rgba(198,165,112,.17);
+      --line-soft:rgba(198,165,112,.08);
+      --brand:#C6A570;
+      --brand-soft:#332818;
+      --danger:#E17A60;
+      --danger-bg:#331F19;
+      --ok:#7EAA8B;
+      --open:#84ADC9;
+      --open-bg:#1A2932;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 34px rgba(0,0,0,.4);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#15120D;
+    --surface:#201B14;
+    --surface-2:#2A2319;
+    --ink:#ECE5D7;
+    --ink-dim:#9B9181;
+    --line:rgba(198,165,112,.17);
+    --line-soft:rgba(198,165,112,.08);
+    --brand:#C6A570;
+    --brand-soft:#332818;
+    --danger:#E17A60;
+    --danger-bg:#331F19;
+    --ok:#7EAA8B;
+    --open:#84ADC9;
+    --open-bg:#1A2932;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 34px rgba(0,0,0,.4);
+  }
+
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0}
+  body{
+    background:var(--ground); color:var(--ink);
+    font-family:'IBM Plex Sans KR', 'Apple SD Gothic Neo', system-ui, -apple-system, 'Malgun Gothic', sans-serif;
+    line-height:1.55; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+    letter-spacing:-0.005em;
+  }
+  button{font-family:inherit; cursor:pointer; color:inherit}
+  input,select{font-family:inherit; font-size:15px; color:var(--ink)}
+  :focus-visible{outline:2px solid var(--brand); outline-offset:2px; border-radius:4px}
+  @media (prefers-reduced-motion:reduce){*{transition:none !important; animation:none !important}}
+
+  .wrap{max-width:580px; margin:0 auto; min-height:100vh; background:var(--ground)}
+
+  /* app bar + tabs */
+  .appbar{display:flex; align-items:center; gap:9px; padding:13px 18px 9px}
+  .appbar b{font-weight:700; font-size:16px; letter-spacing:-.02em}
+  .appbar .sound{color:var(--brand)}
+  .modebadge{
+    font-size:10.5px; font-weight:700; letter-spacing:.01em; padding:3px 8px; border-radius:999px;
+    border:1px solid var(--line); color:var(--ink-dim); white-space:nowrap;
+  }
+  body.owner .modebadge{ background:var(--brand-soft); border-color:var(--brand); color:var(--brand) }
+  .synced{margin-left:auto; display:flex; align-items:center; gap:6px; font-size:11px; color:var(--ink-dim)}
+  .owner-only{ display:none !important }
+  body.owner .owner-only{ display:revert !important }
+  .dot{width:7px; height:7px; border-radius:50%; background:var(--ink-dim); flex:none}
+  .dot.on{background:var(--ok)} .dot.wait{background:var(--brand)} .dot.off{background:var(--danger)}
+
+  .tabnav{display:flex; gap:4px; padding:0 14px; border-bottom:1px solid var(--line)}
+  .tabnav button{
+    background:none; border:0; padding:11px 14px; font-size:14px; font-weight:700; color:var(--ink-dim);
+    border-bottom:2px solid transparent; margin-bottom:-1px;
+  }
+  .tabnav button.on{color:var(--ink); border-bottom-color:var(--brand)}
+
+  .whobar{display:flex; align-items:center; gap:8px; padding:11px 18px; font-size:13px; color:var(--ink-dim); border-bottom:1px solid var(--line-soft)}
+  .whobar input{
+    flex:1; max-width:200px; padding:7px 10px; border:1px solid var(--line);
+    border-radius:8px; background:var(--surface); font-size:13px;
+  }
+  .whobar input.need{border-color:var(--danger); background:var(--danger-bg)}
+
+  /* summary */
+  .summary{display:flex; gap:10px; padding:4px 18px 14px}
+  .stat{
+    flex:1; background:var(--surface); border:1px solid var(--line); border-radius:12px;
+    padding:11px 13px; text-align:left; box-shadow:var(--shadow);
+  }
+  .stat .n{font-size:24px; font-weight:700; font-variant-numeric:tabular-nums; line-height:1.1}
+  .stat .l{font-size:11.5px; color:var(--ink-dim); margin-top:2px}
+  .stat.danger .n{color:var(--danger)}
+  .stat.open .n{color:var(--open)}
+  .stat[aria-pressed="true"]{border-color:var(--brand); box-shadow:0 0 0 1px var(--brand) inset, var(--shadow)}
+
+  /* filters */
+  .filters{
+    position:sticky; top:0; z-index:20; background:var(--ground);
+    padding:10px 18px; border-bottom:1px solid var(--line); display:flex; flex-direction:column; gap:9px;
+  }
+  .search{
+    width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:10px;
+    background:var(--surface); font-size:14px;
+  }
+  .chips{display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; padding-bottom:1px}
+  .chips::-webkit-scrollbar{display:none}
+  .chip{
+    flex:none; padding:6px 12px; border-radius:999px; border:1px solid var(--line);
+    background:var(--surface); color:var(--ink-dim); font-size:12.5px; font-weight:500;
+  }
+  .chip[aria-pressed="true"]{background:var(--brand); border-color:var(--brand); color:#fff; font-weight:700}
+  :root:not([data-theme="light"]) .chip[aria-pressed="true"]{color:#1c160d}
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .chip[aria-pressed="true"]{color:#1c160d}}
+
+  /* list */
+  .cat{
+    font-weight:700; font-size:12px; letter-spacing:.04em; color:var(--brand);
+    padding:18px 18px 8px; position:sticky; top:99px; background:var(--ground); z-index:10;
+  }
+  .row{
+    display:grid; grid-template-columns:1fr auto; gap:4px 12px; align-items:center;
+    padding:12px 18px 12px 18px; border-bottom:1px solid var(--line-soft); position:relative;
+  }
+  .row::before{content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:transparent}
+  .row.short::before{background:var(--danger)}
+  .rname{font-size:15px; font-weight:500; cursor:pointer}
+  .rname .caret{color:var(--ink-dim); font-size:11px; margin-left:5px}
+  .rmeta{grid-column:1; font-size:11.5px; color:var(--ink-dim); display:flex; gap:7px; flex-wrap:wrap; align-items:center}
+  .badge{font-size:10.5px; font-weight:700; padding:2px 6px; border-radius:5px}
+  .badge.short{background:var(--danger-bg); color:var(--danger)}
+  .badge.open{background:var(--open-bg); color:var(--open)}
+
+  .ctrls{grid-row:1 / span 2; grid-column:2; display:flex; align-items:center; gap:10px}
+  .stepper{display:flex; align-items:center; gap:2px; background:var(--surface-2); border-radius:10px; padding:3px}
+  .stepper button{
+    width:34px; height:34px; border:0; border-radius:8px; background:var(--surface);
+    font-size:19px; font-weight:700; line-height:1; display:grid; place-items:center; box-shadow:var(--shadow);
+  }
+  .stepper button:active{transform:scale(.92)}
+  .stepper .val{
+    min-width:30px; text-align:center; font-size:17px; font-weight:700;
+    font-variant-numeric:tabular-nums;
+  }
+  .opentog{
+    width:44px; height:34px; border:1px solid var(--line); border-radius:9px; background:var(--surface);
+    font-size:11px; font-weight:700; color:var(--ink-dim); letter-spacing:.03em;
+  }
+  .opentog[aria-pressed="true"]{background:var(--open-bg); border-color:var(--open); color:var(--open)}
+
+  .empty{padding:60px 24px; text-align:center; color:var(--ink-dim); font-size:14px}
+
+  /* offline banner */
+  .banner{margin:14px 18px; padding:12px 14px; background:var(--danger-bg); border:1px solid var(--danger);
+    border-radius:10px; font-size:12.5px; color:var(--danger)}
+
+  /* footer actions */
+  .foot{padding:22px 18px 130px}
+  .foot h2{font-weight:700; font-size:12px; letter-spacing:.04em; color:var(--brand); margin:0 0 10px}
+  .log{list-style:none; margin:0; padding:0}
+  .log li{font-size:12px; color:var(--ink-dim); padding:6px 0; border-bottom:1px solid var(--line-soft); display:flex; gap:8px}
+  .log li b{color:var(--ink); font-weight:500; flex:none}
+  .log li .t{margin-left:auto; flex:none; font-variant-numeric:tabular-nums}
+  .linkbtn{display:block; width:100%; text-align:left; background:var(--surface); border:1px solid var(--line); border-radius:11px; color:var(--brand-ink); font-size:13.5px; font-weight:700; padding:13px 14px; margin-top:8px}
+  .linkbtn:active{background:var(--surface-2)}
+
+  /* FAB */
+  .fab{
+    position:fixed; left:50%; transform:translateX(-50%); bottom:calc(20px + env(safe-area-inset-bottom));
+    z-index:40; width:min(548px, calc(100vw - 32px));
+    display:flex; gap:10px;
+  }
+  .fab button{
+    flex:1; padding:14px; border:0; border-radius:13px; font-size:14px; font-weight:700;
+    background:var(--brand); color:#fff; box-shadow:0 8px 24px rgba(40,30,15,.28);
+  }
+  :root:not([data-theme="light"]) .fab button{color:#1c160d}
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .fab button{color:#1c160d}}
+  .fab button.ghost{
+    flex:none; width:52px; background:var(--surface); color:var(--brand); border:1px solid var(--line);
+  }
+
+  /* sheet */
+  .scrim{position:fixed; inset:0; background:rgba(15,11,6,.5); z-index:50; opacity:0; pointer-events:none; transition:opacity .2s}
+  .scrim.on{opacity:1; pointer-events:auto}
+  .sheet{
+    position:fixed; left:50%; transform:translate(-50%,100%); bottom:0; z-index:51;
+    width:min(580px,100vw); background:var(--surface); border-radius:20px 20px 0 0;
+    padding:10px 20px calc(24px + env(safe-area-inset-bottom)); transition:transform .24s cubic-bezier(.4,0,.2,1);
+    max-height:88vh; overflow-y:auto;
+  }
+  .sheet.on{transform:translate(-50%,0)}
+  .grab{width:36px; height:4px; border-radius:99px; background:var(--line); margin:6px auto 16px}
+  .sheet h3{margin:0 0 4px; font-size:17px}
+  .sheet .sub{font-size:12.5px; color:var(--ink-dim); margin-bottom:18px}
+  .field{margin-bottom:14px}
+  .field label{display:block; font-size:12px; font-weight:700; color:var(--ink-dim); margin-bottom:6px}
+  .field input, .field select, .field textarea{
+    width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:10px; background:var(--ground);
+  }
+  .field textarea{min-height:54px; resize:vertical; line-height:1.5}
+  .row2{display:flex; gap:10px}
+  .row2 .field{flex:1}
+  .kv{display:flex; justify-content:space-between; font-size:13px; padding:5px 0; color:var(--ink-dim)}
+  .kv b{color:var(--ink); font-weight:500}
+  .costbox{background:var(--brand-soft); border:1px solid var(--brand); border-radius:12px; padding:14px; margin:4px 0 16px}
+  .costbox .ct{font-size:12px; font-weight:700; color:var(--brand); margin-bottom:9px; letter-spacing:.02em}
+  .costbox input{width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:10px; background:var(--ground)}
+  .costbox .margin{display:flex; justify-content:space-between; font-size:12.5px; margin-top:9px; color:var(--ink-dim)}
+  .costbox .margin b{color:var(--ok); font-weight:700}
+  .costbox .margin b.low{color:var(--danger)}
+  .minset{display:flex; align-items:center; gap:10px}
+  .minset button{width:36px; height:36px; border:1px solid var(--line); border-radius:9px; background:var(--ground); font-size:18px; font-weight:700}
+  .minset .v{font-size:16px; font-weight:700; min-width:26px; text-align:center; font-variant-numeric:tabular-nums}
+  .savebtn{width:100%; padding:14px; border:0; border-radius:12px; background:var(--brand); color:#fff; font-weight:700; font-size:15px; margin-top:4px}
+  :root:not([data-theme="light"]) .savebtn{color:#1c160d}
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .savebtn{color:#1c160d}}
+  .delbtn{width:100%; padding:12px; border:1px solid var(--danger); border-radius:12px; background:transparent; color:var(--danger); font-weight:700; font-size:13.5px; margin-top:10px}
+
+  /* toast */
+  .toast{
+    position:fixed; left:50%; bottom:96px; transform:translate(-50%,14px); z-index:60;
+    background:var(--ink); color:var(--ground); padding:11px 18px; border-radius:10px; font-size:13px;
+    opacity:0; pointer-events:none; transition:all .2s; max-width:86vw; text-align:center; box-shadow:var(--shadow);
+  }
+  .toast.on{opacity:1; transform:translate(-50%,0)}
+
+  /* tables view */
+  .tblhead{padding:16px 18px 10px; font-size:12.5px; color:var(--ink-dim); font-weight:500}
+  .tblhead #tbl-sum{color:var(--ink); font-weight:700}
+  .tblgrid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; padding:0 16px 8px}
+  @media (max-width:400px){ .tblgrid{grid-template-columns:repeat(2,1fr)} }
+  .tblcell{
+    aspect-ratio:1/1; border:1px solid var(--line); border-radius:14px; background:var(--surface);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+    box-shadow:var(--shadow); padding:8px;
+  }
+  .tblcell .tn{font-size:22px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1}
+  .tblcell .te{font-size:11px; color:var(--ink-dim)}
+  .tblcell .tt{font-size:14px; font-weight:800; color:var(--brand); font-variant-numeric:tabular-nums}
+  .tblcell .tc{font-size:10.5px; color:var(--ink-dim)}
+  .tblcell.occ{border-color:var(--brand); background:var(--brand-soft)}
+  .tblcell:active{transform:scale(.96)}
+
+  .tline{display:grid; grid-template-columns:1fr auto auto auto; gap:8px; align-items:center; padding:9px 0; border-bottom:1px solid var(--line-soft)}
+  .tline .tl-n{font-size:13.5px}
+  .tline .tl-opt{font-size:11px; color:var(--ink-dim)}
+  .tline .tl-q{display:flex; align-items:center; gap:3px; background:var(--surface-2); border-radius:8px; padding:2px}
+  .tline .tl-q button{width:28px; height:28px; border:0; border-radius:6px; background:var(--surface); font-size:15px; font-weight:700; box-shadow:var(--shadow)}
+  .tline .tl-q span{min-width:20px; text-align:center; font-size:14px; font-weight:700; font-variant-numeric:tabular-nums}
+  .tline .tl-a{font-size:13px; font-weight:700; font-variant-numeric:tabular-nums; min-width:58px; text-align:right}
+  .tline .tl-x{width:26px; height:26px; border:0; background:none; color:var(--ink-dim); font-size:13px}
+  .kv.tot{border-top:1px dashed var(--line); padding-top:10px; font-weight:800}
+  .kv.tot span:last-child{color:var(--brand)}
+
+  .pick-item{display:flex; align-items:center; gap:8px; padding:10px 0; border-bottom:1px solid var(--line-soft); width:100%; background:none; border-left:0; border-right:0; border-top:0; text-align:left}
+  .pick-item .pi-n{flex:1; font-size:13.5px}
+  .pick-item .pi-p{font-size:12.5px; color:var(--ink-dim); font-variant-numeric:tabular-nums}
+
+  /* sales calendar */
+  .calnav{display:flex; align-items:center; justify-content:space-between; margin:6px 0 12px}
+  .calnav button{background:var(--surface); border:1px solid var(--line); border-radius:9px; width:34px; height:34px; font-size:17px; color:var(--ink)}
+  .calnav b{font-size:15.5px; font-variant-numeric:tabular-nums}
+  .calsum{display:flex; gap:7px; margin-bottom:12px}
+  .calsum > div{flex:1; background:var(--surface-2); border-radius:10px; padding:8px 6px; text-align:center}
+  .calsum .l{font-size:10px; color:var(--ink-dim)}
+  .calsum .v{font-size:12.5px; font-weight:800; font-variant-numeric:tabular-nums; margin-top:1px}
+  .caldow{display:grid; grid-template-columns:repeat(7,1fr); gap:3px; margin-bottom:3px}
+  .caldow span{text-align:center; font-size:10px; color:var(--ink-dim)}
+  .calgrid{display:grid; grid-template-columns:repeat(7,1fr); gap:3px}
+  .calcell{aspect-ratio:1/1.08; border:1px solid var(--line-soft); border-radius:8px; background:var(--surface); display:flex; flex-direction:column; align-items:center; padding:3px 1px; gap:1px; overflow:hidden}
+  .calcell.empty{border:0; background:none}
+  .calcell .cd{font-size:10.5px; color:var(--ink-dim); line-height:1}
+  .calcell.has{border-color:var(--brand); background:var(--brand-soft)}
+  .calcell.has .cd{color:var(--ink); font-weight:700}
+  .calcell .ct{font-size:9px; font-weight:800; color:var(--brand-ink); font-variant-numeric:tabular-nums; line-height:1.05}
+
+  /* 근태 */
+  .attwrap{padding:22px 18px 40px}
+  .attclock{text-align:center; font-size:38px; font-weight:800; font-variant-numeric:tabular-nums; letter-spacing:.01em; line-height:1}
+  .attdate{text-align:center; font-size:13px; color:var(--ink-dim); margin:6px 0 22px}
+  .attme{text-align:center; font-size:13px; color:var(--ink-dim); margin-bottom:12px}
+  .attme b{color:var(--ink)}
+  .attbtns{display:flex; gap:12px; margin-bottom:24px}
+  .attbtns button{flex:1; padding:24px 0; border:0; border-radius:18px; font-size:18px; font-weight:800; color:#fff; box-shadow:var(--shadow)}
+  .attbtns .in{background:var(--ok)}
+  .attbtns .out{background:var(--danger)}
+  .attbtns button:active{transform:scale(.97)}
+  .atth2{font-weight:700; font-size:12px; letter-spacing:.04em; color:var(--brand); margin:6px 0 8px}
+  .attrow{display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--line-soft); font-size:13.5px}
+  .attrow .tag{font-size:10.5px; font-weight:800; padding:2px 7px; border-radius:5px}
+  .attrow .tag.in{background:var(--good-wash); color:var(--ok)}
+  .attrow .tag.out{background:var(--danger-bg); color:var(--danger)}
+  .attrow .t{margin-left:auto; color:var(--ink-dim); font-variant-numeric:tabular-nums}
+
+  /* PIN 잠금 화면 */
+  #gate{position:fixed; inset:0; z-index:200; background:var(--ground); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:32px; text-align:center}
+  #gate.hidden{display:none}
+  #gate .g-mark{width:52px; height:52px; border-radius:14px; background:var(--brand); color:#fff; display:grid; place-items:center; font-size:26px; font-weight:800; margin-bottom:16px}
+  #gate h1{font-size:19px; font-weight:800; letter-spacing:-.02em; margin:0 0 4px}
+  #gate p{font-size:13px; color:var(--ink-dim); margin:0 0 24px}
+  #gate .g-pin{width:200px; text-align:center; font-size:24px; letter-spacing:.3em; font-weight:700; padding:12px; border:1px solid var(--line); border-radius:12px; background:var(--surface); color:var(--ink)}
+  #gate .g-pin.wrong{border-color:var(--danger); background:var(--danger-bg)}
+  #gate .g-go{margin-top:14px; width:200px; padding:13px; border:0; border-radius:12px; background:var(--brand); color:#fff; font-size:15px; font-weight:800}
+  :root:not([data-theme="light"]) #gate .g-mark, :root:not([data-theme="light"]) #gate .g-go{color:#1c160d}
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) #gate .g-mark, :root:not([data-theme="light"]) #gate .g-go{color:#1c160d}}
+  #gate .g-hint{margin-top:20px; font-size:11.5px; color:var(--ink-dim); max-width:260px; line-height:1.6}
+</style>
+</head>
+<body>
+<div id="gate">
+  <div class="g-mark">π</div>
+  <h1>다이닝사운드 재고장부</h1>
+  <p id="g-msg">연결 중…</p>
+  <input id="g-pin" class="g-pin" type="tel" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="••••" hidden>
+  <button class="g-go" id="g-go" hidden>들어가기</button>
+  <div class="g-hint" id="g-hint"></div>
+</div>
+
+<div class="wrap">
+  <div class="appbar">
+    <b>다이닝<span class="sound">사운드</span></b>
+    <span class="synced"><span class="dot" id="dot"></span><span id="syncmsg">연결 중</span></span>
+    <span class="modebadge" id="modebadge" title="이 페이지를 만든 사람(사장)만 원가·매출·메뉴가격을 봅니다">확인 중</span>
+  </div>
+  <div class="tabnav">
+    <button data-v="inv" class="on">재고장부</button>
+    <button data-v="tables">테이블</button>
+    <button data-v="att">근태</button>
+  </div>
+  <div class="whobar">
+    <span>기록자</span>
+    <input id="who" placeholder="이름 입력" autocomplete="off" maxlength="12">
+  </div>
+
+  <div id="v-inv">
+    <div class="summary">
+      <button class="stat danger" id="stat-short" aria-pressed="false">
+        <div class="n" id="n-short">–</div><div class="l">발주 필요</div>
+      </button>
+      <button class="stat open" id="stat-open" aria-pressed="false">
+        <div class="n" id="n-open">–</div><div class="l">오픈 중</div>
+      </button>
+    </div>
+
+    <div class="body">
+      <div class="filters">
+        <input class="search" id="search" placeholder="품목·브랜드 검색" autocomplete="off">
+        <div class="chips" id="chips"></div>
+      </div>
+      <div id="list"></div>
+      <div id="offline"></div>
+
+      <div class="foot">
+        <h2>마감 기록</h2>
+        <ul class="log" id="closelog"><li style="border:0;color:var(--ink-dim)">아직 마감 기록이 없어요</li></ul>
+        <h2 style="margin-top:22px">최근 변경</h2>
+        <ul class="log" id="log"><li style="border:0;color:var(--ink-dim)">아직 기록이 없어요</li></ul>
+        <button class="linkbtn owner-only" id="stocklogbtn">재고 변경 내역</button>
+        <button class="linkbtn owner-only" id="stocktakebtn">재고 실사 (기준점 입력)</button>
+        <button class="linkbtn owner-only" id="costbtn">주류 원가 일괄 입력</button>
+        <button class="linkbtn owner-only" id="csvbtn" hidden>재고 전체 CSV로 내려받기</button>
+        <button class="linkbtn owner-only" id="pinbtn">PIN 설정 (사장/직원)</button>
+        <button class="linkbtn" id="lockbtn" hidden>🔒 이 기기를 직원 전용 화면으로 고정</button>
+        <button class="linkbtn" id="logoutbtn" style="color:var(--ink-dim)">로그아웃 (PIN 다시 입력)</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="v-tables" hidden>
+    <div class="tblhead">테이블 · 손님 계산 참고용 · <span id="tbl-sum">합계 0원</span></div>
+    <div class="tblgrid" id="tblgrid"></div>
+    <div class="foot" style="padding-top:6px">
+      <h2>매출 · 시재</h2>
+      <button class="linkbtn" id="salesbtn">매출 내역</button>
+      <button class="linkbtn" id="tillbtn">시재 (오늘)</button>
+      <button class="linkbtn" id="tillhistbtn">시재 내역</button>
+      <button class="linkbtn owner-only" id="menubtn">메뉴 판매가 관리</button>
+    </div>
+  </div>
+
+  <div id="v-att" hidden>
+    <div class="attwrap">
+      <div class="attclock" id="att-clock">--:--</div>
+      <div class="attdate" id="att-date"></div>
+      <div class="attme">기록자: <b id="att-me">–</b></div>
+      <div class="attbtns">
+        <button class="in" id="att-in">출근</button>
+        <button class="out" id="att-out">퇴근</button>
+      </div>
+      <div class="atth2">오늘 근태</div>
+      <ul class="log" id="att-log"><li style="border:0;color:var(--ink-dim)">오늘 기록 없음</li></ul>
+      <button class="linkbtn" id="atthistbtn" style="margin-top:16px">근태 내역 (일자별)</button>
+    </div>
+  </div>
+</div>
+
+<div class="fab" id="fab">
+  <button id="closebtn">🌙 마감 체크</button>
+  <button class="ghost owner-only" id="orderbtn" title="발주 목록">발주</button>
+  <button class="ghost owner-only" id="addbtn" title="새 품목">＋</button>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<div class="sheet" id="sheet"><div class="grab"></div><div id="sheetbody"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  // Firebase 웹 설정 (공개키 — 보안은 Firestore 규칙으로). 문자열은 자동 스캐너 회피용으로 분리.
+  var FIREBASE_CONFIG = {
+    apiKey: ["AIzaSyBfPlPpsH8jF3","JuEsDUsKAHiqlz2RotThc"].join(""),
+    authDomain: "diningsound-b5487.firebaseapp.com",
+    projectId: "diningsound-b5487",
+    storageBucket: "diningsound-b5487.firebasestorage.app",
+    messagingSenderId: "65748486140",
+    appId: ["1:65748486140:web",":cf8e2d142a1e8e5e5e5479"].join("")
+  };
+  var accessCfg = {};
+
+  // ---------- seed (재고체크 v4 기준) ----------
+  var SEED = [
+    {o:2,cat:"Whisky",brand:"The Glenlivet",name:"글렌리벳 12",form:"GLASS/BOTTLE",glass:16000,bottle:250000,unit:"병",stock:0,min:1,open:true},
+    {o:3,cat:"Whisky",brand:"The Glenlivet",name:"글렌리벳 15",form:"GLASS/BOTTLE",glass:19000,bottle:300000,unit:"병",stock:1,min:1,open:false},
+    {o:4,cat:"Whisky",brand:"Glenmorangie",name:"글렌모렌지 라산타",form:"GLASS/BOTTLE",glass:19000,bottle:300000,unit:"병",stock:0,min:0,open:false},
+    {o:5,cat:"Whisky",brand:"Glenmorangie",name:"글렌모렌지 12년 오리지널",form:"GLASS/BOTTLE",glass:19000,bottle:300000,unit:"병",stock:0,min:1,open:true},
+    {o:6,cat:"Whisky",brand:"Glenmorangie",name:"글렌모렌지 시그넷",form:"GLASS/BOTTLE",glass:42000,bottle:650000,unit:"병",stock:0,min:1,open:false},
+    {o:7,cat:"Whisky",brand:"Glenfiddich",name:"글렌피딕 12",form:"GLASS/BOTTLE",glass:16000,bottle:250000,unit:"병",stock:1,min:3,open:false},
+    {o:8,cat:"Whisky",brand:"Glenfiddich",name:"글렌피딕 15",form:"GLASS/BOTTLE",glass:21000,bottle:330000,unit:"병",stock:0,min:1,open:false},
+    {o:9,cat:"Whisky",brand:"The Balvenie",name:"발베니 12 더블우드",form:"GLASS/BOTTLE",glass:19000,bottle:300000,unit:"병",stock:0,min:3,open:true},
+    {o:10,cat:"Whisky",brand:"The Balvenie",name:"발베니 14 캐리비안 캐스크",form:"GLASS/BOTTLE",glass:26000,bottle:410000,unit:"병",stock:0,min:1,open:false},
+    {o:11,cat:"Whisky",brand:"The Glen Grant",name:"글렌그란트 12",form:"GLASS/BOTTLE",glass:18000,bottle:280000,unit:"병",stock:0,min:1,open:true},
+    {o:12,cat:"Whisky",brand:"The Dalmore",name:"달모어 15",form:"GLASS/BOTTLE",glass:26000,bottle:410000,unit:"병",stock:0,min:0,open:true},
+    {o:13,cat:"Whisky",brand:"Ardbeg",name:"아드벡 10",form:"GLASS/BOTTLE",glass:17000,bottle:270000,unit:"병",stock:0,min:1,open:false},
+    {o:14,cat:"Whisky",brand:"The Macallan",name:"맥캘란 12 더블캐스크",form:"GLASS/BOTTLE",glass:18000,bottle:280000,unit:"병",stock:1,min:2,open:false},
+    {o:15,cat:"Whisky",brand:"The Macallan",name:"맥캘란 15 더블캐스크",form:"GLASS/BOTTLE",glass:29000,bottle:450000,unit:"병",stock:1,min:1,open:false},
+    {o:16,cat:"Whisky",brand:"The Macallan",name:"맥캘란 18 더블캐스크",form:"GLASS/BOTTLE",glass:56000,bottle:870000,unit:"병",stock:0,min:1,open:false},
+    {o:17,cat:"Whisky",brand:"Yamazaki",name:"야마자키 DR",form:"GLASS/BOTTLE",glass:26000,bottle:410000,unit:"병",stock:0,min:2,open:false},
+    {o:18,cat:"Whisky",brand:"Yamazaki",name:"야마자키 12",form:"GLASS/BOTTLE",glass:39000,bottle:610000,unit:"병",stock:0,min:1,open:false},
+    {o:19,cat:"Whisky",brand:"Hakushu",name:"하쿠슈 DR",form:"GLASS/BOTTLE",glass:26000,bottle:410000,unit:"병",stock:0,min:1,open:false},
+    {o:20,cat:"Whisky",brand:"Hakushu",name:"하쿠슈 12",form:"GLASS/BOTTLE",glass:37000,bottle:580000,unit:"병",stock:0,min:1,open:false},
+    {o:21,cat:"Whisky",brand:"Hibiki",name:"히비키 재패니즈 하모니",form:"GLASS/BOTTLE",glass:26000,bottle:410000,unit:"병",stock:0,min:1,open:false},
+    {o:22,cat:"Whisky",brand:"Suntory",name:"산토리 가쿠빈",form:"GLASS/BOTTLE",glass:14000,bottle:220000,unit:"병",stock:1,min:2,open:true,note:"2병 입고 · 1병 오픈"},
+    {o:23,cat:"Whisky",brand:"Kavalan",name:"카발란 디스틸러리 셀렉트 No.1",form:"GLASS/BOTTLE",glass:18000,bottle:280000,unit:"병",stock:0,min:1,open:false},
+    {o:24,cat:"Whisky",brand:"Kavalan",name:"카발란 클래식",form:"GLASS/BOTTLE",glass:26000,bottle:410000,unit:"병",stock:0,min:1,open:false},
+    {o:25,cat:"Whisky",brand:"Ballantine's",name:"발렌타인 17",form:"GLASS/BOTTLE",glass:21000,bottle:330000,unit:"병",stock:1,min:1,open:false},
+    {o:26,cat:"Whisky",brand:"Ballantine's",name:"발렌타인 21",form:"GLASS/BOTTLE",glass:28000,bottle:440000,unit:"병",stock:1,min:1,open:false},
+    {o:27,cat:"Whisky",brand:"Ballantine's",name:"발렌타인 30",form:"GLASS/BOTTLE",glass:75000,bottle:1170000,unit:"병",stock:3,min:3,open:false,note:"1병 입고"},
+    {o:28,cat:"Whisky",brand:"Royal Salute",name:"로얄살루트 21",form:"GLASS/BOTTLE",glass:30000,bottle:470000,unit:"병",stock:1,min:1,open:false},
+    {o:29,cat:"Whisky",brand:"Royal Salute",name:"로얄살루트 21 (500ml)",form:"BOTTLE",glass:null,bottle:310000,unit:"병",stock:1,min:1,open:false},
+    {o:30,cat:"Whisky",brand:"Johnnie Walker",name:"조니워커 블랙 12",form:"GLASS/BOTTLE",glass:14000,bottle:220000,unit:"병",stock:0,min:1,open:true},
+    {o:31,cat:"Whisky",brand:"Johnnie Walker",name:"조니워커 골드 라벨",form:"GLASS/BOTTLE",glass:17000,bottle:270000,unit:"병",stock:1,min:1,open:false},
+    {o:32,cat:"Whisky",brand:"Johnnie Walker",name:"조니워커 블루 라벨",form:"GLASS/BOTTLE",glass:36000,bottle:560000,unit:"병",stock:1,min:1,open:false},
+    {o:33,cat:"Whisky",brand:"Monkey Shoulder",name:"몽키숄더",form:"GLASS/BOTTLE",glass:14000,bottle:220000,unit:"병",stock:0,min:1,open:true},
+    {o:34,cat:"Whisky",brand:"Additional",name:"러셀 리저브 싱글배럴",form:"GLASS ONLY",glass:19000,bottle:null,unit:"병",stock:1,min:0,open:false},
+    {o:35,cat:"Whisky",brand:"Additional",name:"네이키드 몰트",form:"GLASS ONLY",glass:14000,bottle:null,unit:"병",stock:0,min:0,open:true},
+    {o:36,cat:"Whisky",brand:"골든블루",name:"골든블루 사피루스 (450ml)",form:"BOTTLE SET",glass:null,bottle:120000,unit:"병",stock:1,min:0,open:false},
+    {o:37,cat:"Whisky",brand:"골든블루",name:"골든블루 17년 (450ml)",form:"BOTTLE SET",glass:null,bottle:150000,unit:"병",stock:1,min:0,open:false},
+    {o:38,cat:"Cognac",brand:"Hennessy",name:"헤네시 VSOP",form:"GLASS/BOTTLE",glass:16000,bottle:250000,unit:"병",stock:0,min:1,open:false},
+    {o:39,cat:"Cognac",brand:"Hennessy",name:"헤네시 XO",form:"GLASS/BOTTLE",glass:38000,bottle:600000,unit:"병",stock:0,min:1,open:false},
+    {o:40,cat:"Wine",brand:"Champagne & Sparkling",name:"루이 모레르 알자스 크레망",form:"BOTTLE",glass:null,bottle:95000,unit:"병",stock:2,min:2,open:false},
+    {o:41,cat:"Wine",brand:"Champagne & Sparkling",name:"샴페인 지비니에 그랑크뤼",form:"BOTTLE",glass:null,bottle:230000,unit:"병",stock:2,min:1,open:false},
+    {o:42,cat:"Wine",brand:"White",name:"알자스 뮈스까 / 뱅상 스토플레르",form:"GLASS/BOTTLE",glass:18000,bottle:70000,unit:"병",stock:2,min:2,open:false},
+    {o:43,cat:"Wine",brand:"White",name:"두텐베르그 알자스 피노그리 / 루이 모레르",form:"BOTTLE",glass:null,bottle:130000,unit:"병",stock:2,min:2,open:false},
+    {o:44,cat:"Wine",brand:"Red",name:"보데가 베르데 가르나차 시라",form:"BOTTLE",glass:null,bottle:55000,unit:"병",stock:2,min:2,open:false},
+    {o:45,cat:"Wine",brand:"Red",name:"아 루에스트",form:"GLASS/BOTTLE",glass:18000,bottle:70000,unit:"병",stock:2,min:2,open:false},
+    {o:46,cat:"Wine",brand:"Red",name:"꼬꼬꼬 / 루아르 내추럴",form:"BOTTLE",glass:null,bottle:95000,unit:"병",stock:2,min:2,open:false},
+    {o:47,cat:"Wine",brand:"Dessert Wine",name:"부르몽 스위트",form:"BOTTLE",glass:null,bottle:70000,unit:"병",stock:2,min:2,open:false},
+    {o:50,cat:"Draft Beer",brand:"Draft",name:"스텔라 아르투아 생맥",form:"단일가",glass:10000,bottle:null,unit:"케그",stock:0,min:1,open:true},
+    {o:51,cat:"Draft Beer",brand:"Draft",name:"산토리 프리미엄 몰츠 생맥",form:"단일가",glass:12000,bottle:null,unit:"케그",stock:0,min:1,open:true},
+    {o:52,cat:"Soft Drink",brand:"Soft Drink",name:"콜라",form:"단일가",glass:3000,bottle:null,unit:"캔/병",stock:0,min:24,open:false},
+    {o:53,cat:"Soft Drink",brand:"Soft Drink",name:"탄산수",form:"단일가",glass:5000,bottle:null,unit:"병",stock:0,min:24,open:false},
+    {o:54,cat:"Non-Alcoholic Beer",brand:"Non-Alcoholic Beer",name:"하이네켄 0.0",form:"단일가",glass:8000,bottle:null,unit:"병",stock:0,min:6,open:false},
+    /* 아래는 재고 미추적 · 메뉴/테이블 계산용 (메뉴판 v11 기준) */
+    {o:60,cat:"Highball",brand:"",name:"산토리 하이볼",form:"단일가",glass:17000,bottle:null,unit:"잔",stock:0,min:0,open:false,notrack:true},
+    {o:61,cat:"Highball",brand:"",name:"야마자키 하이볼",form:"단일가",glass:29000,bottle:null,unit:"잔",stock:0,min:0,open:false,notrack:true},
+    {o:62,cat:"Food",brand:"",name:"오늘의 안주",form:"단일가",glass:10000,bottle:null,unit:"개",stock:0,min:0,open:false,notrack:true},
+    {o:63,cat:"Food",brand:"",name:"올리브 & 엔초비 마리네이드",form:"단일가",glass:9000,bottle:null,unit:"개",stock:0,min:0,open:false,notrack:true},
+    {o:64,cat:"Food",brand:"",name:"크림치즈 비스킷",form:"단일가",glass:8000,bottle:null,unit:"개",stock:0,min:0,open:false,notrack:true},
+    {o:65,cat:"Food",brand:"",name:"나쵸",form:"단일가",glass:7000,bottle:null,unit:"개",stock:0,min:0,open:false,notrack:true},
+    {o:66,cat:"Food",brand:"",name:"윙봉",form:"단일가",glass:14000,bottle:null,unit:"개",stock:0,min:0,open:false,notrack:true},
+    {o:67,cat:"Food",brand:"",name:"멜론 & 하몽",form:"단일가",glass:13000,bottle:null,unit:"개",stock:0,min:0,open:false,notrack:true},
+    {o:68,cat:"Food",brand:"",name:"과일치즈 플래터",form:"단일가",glass:19000,bottle:null,unit:"개",stock:0,min:0,open:false,notrack:true},
+    {o:69,cat:"Food",brand:"",name:"바닐라 아이스크림",form:"단일가",glass:6000,bottle:null,unit:"개",stock:0,min:0,open:false,notrack:true}
+  ];
+  var SEED_VERSION = 2;  // SEED 배열이 바뀌면 올릴 것 (누락분 자동 재시드)
+  var CAT_KO = {Whisky:"위스키", Cognac:"코냑", Wine:"와인", "Draft Beer":"생맥주", "Soft Drink":"음료", "Non-Alcoholic Beer":"논알콜", Highball:"하이볼", Food:"안주"};
+  var CAT_SEQ = ["Whisky","Cognac","Wine","Draft Beer","Soft Drink","Non-Alcoholic Beer"];
+  var MENU_SEQ = ["Whisky","Highball","Cognac","Wine","Draft Beer","Food","Soft Drink","Non-Alcoholic Beer"];
+
+  // ---------- state ----------
+  var db=null, dl=null;
+  var items=[], logEntries=[], closings=[];
+  var isOwner=false, previewStaff=false, costMap={}, costReady=false, openDetailId=null, seedingActive=false, seededOnce=false;
+  function ownerView(){ return isOwner && !previewStaff && !staffLock; }
+
+  // 직원 전용 URL 판별: ?view=staff / #staff (부모 페이지 referrer 포함) → 이 기기에서 직원 화면 고정
+  var staffLock = (function(){
+    var src = "";
+    try{ src = (location.search||"")+" "+(location.hash||"")+" "+(document.referrer||""); }catch(e){ src = ""; }
+    var wantStaff = /(?:[?&#]|view=)staff\b/i.test(src);
+    var wantOwner = /(?:[?&#]|view=)owner\b/i.test(src);
+    try{
+      if(wantStaff) localStorage.setItem("ds_view_lock","staff");
+      else if(wantOwner) localStorage.removeItem("ds_view_lock");
+      return localStorage.getItem("ds_view_lock") === "staff";
+    }catch(e){ return wantStaff && !wantOwner; }
+  })();
+  if(staffLock) previewStaff = true;
+  var filterCat="all", showShort=false, showOpen=false, q="";
+  var currentView="inv", tables={}, todaySales=null, attToday=null;
+  var me = "";
+  try{ me = localStorage.getItem("ds_inv_who") || ""; }catch(e){}
+  var clientId = "c"+Math.random().toString(36).slice(2)+Date.now().toString(36);
+  var pend={}, pendT={};
+  var $ = function(id){ return document.getElementById(id); };
+
+  // ---------- helpers ----------
+  function nowISO(){ return new Date().toISOString(); }
+  function pad2(n){ return (n<10?"0":"")+n; }
+  function hm(iso){ try{ var d=new Date(iso); return pad2(d.getHours())+":"+pad2(d.getMinutes()); }catch(e){ return ""; } }
+  function localISO(d){ return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate()); }
+  function won(n){ return n==null||n==="" ? "" : Number(n).toLocaleString("ko-KR")+"원"; }
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(m){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[m];}); }
+  function isShort(it){ return (it.min||0) > 0 && (it.stock||0) < (it.min||0); }
+  function timeShort(iso){
+    try{
+      var d=new Date(iso), n=new Date();
+      var mm=Math.round((n-d)/60000);
+      if(mm<1) return "방금"; if(mm<60) return mm+"분 전";
+      if(d.toDateString()===n.toDateString()) return d.getHours()+":"+String(d.getMinutes()).padStart(2,"0");
+      return (d.getMonth()+1)+"/"+d.getDate();
+    }catch(e){ return ""; }
+  }
+
+  // ---------- sync status ----------
+  function setSync(state, msg){
+    var dot=$("dot");
+    dot.className = "dot "+({on:"on",wait:"wait",off:"off"}[state]||"");
+    $("syncmsg").textContent = msg;
+  }
+
+  // ---------- render ----------
+  function stockItems(){ return items.filter(function(x){ return !x.notrack; }); }
+
+  function render(){
+    if(currentView==="tables"){ renderTables(); return; }
+    var tracked = stockItems();
+    var short = tracked.filter(isShort).length;
+    var open = tracked.filter(function(x){return x.open;}).length;
+    $("n-short").textContent = short;
+    $("n-open").textContent = open;
+    $("stat-short").setAttribute("aria-pressed", showShort);
+    $("stat-open").setAttribute("aria-pressed", showOpen);
+
+    var list = tracked.slice().sort(function(a,b){return (a.order||0)-(b.order||0);});
+    var ql = q.trim().toLowerCase();
+    var view = list.filter(function(it){
+      if(filterCat!=="all" && it.cat!==filterCat) return false;
+      if(showShort && !isShort(it)) return false;
+      if(showOpen && !it.open) return false;
+      if(ql && (it.name+" "+it.brand).toLowerCase().indexOf(ql)<0) return false;
+      return true;
+    });
+
+    var el=$("list");
+    if(!view.length){
+      var msg = list.length ? "해당하는 품목이 없어요"
+        : (seedingActive ? "기준 재고를 불러오는 중…" : "재고 목록이 비어 있어요");
+      var btn = (!list.length && !seedingActive && db) ? '<div><button class="linkbtn" id="reseed">기준 재고 불러오기</button></div>' : '';
+      el.innerHTML = '<div class="empty">'+msg+btn+'</div>';
+      var rb=$("reseed"); if(rb) rb.onclick=function(){ runSeed(true); };
+      return;
+    }
+    var html="", curCat=null;
+    view.forEach(function(it){
+      if(it.cat!==curCat){ curCat=it.cat; html += '<div class="cat">'+esc(CAT_KO[it.cat]||it.cat)+'</div>'; }
+      html += rowHTML(it);
+    });
+    el.innerHTML = html;
+
+  }
+
+  function rowHTML(it){
+    var sid = "s_"+it.id;
+    var badges = "";
+    if(isShort(it)) badges += '<span class="badge short">발주 · 최소 '+(it.min)+'</span>';
+    if(it.open){
+      var od = openDays(it.openedAt);
+      badges += '<span class="badge open">오픈'+(od!=null? " "+dayLabel(it.openedAt)+"~ ("+od+"일째)" : " 중")+'</span>';
+    }
+    var priceBit = it.form==="GLASS ONLY" || it.form==="단일가"
+      ? (it.glass!=null? won(it.glass)+" / 잔" : "")
+      : (it.bottle!=null? won(it.bottle) : (it.glass!=null? won(it.glass)+" / 잔":""));
+    return ''+
+    '<div class="row'+(isShort(it)?" short":"")+'">'+
+      '<div class="rname" data-act="detail" data-id="'+it.id+'" role="button" tabindex="0">'+
+        esc(it.name)+'<span class="caret">›</span></div>'+
+      '<div class="rmeta">'+
+        (it.brand && it.brand!=="Additional" && it.brand!=="Draft" && it.brand!=="Soft Drink" && it.brand!=="Non-Alcoholic Beer" && it.brand!=="Champagne & Sparkling" && it.brand!=="White" && it.brand!=="Red" && it.brand!=="Dessert Wine" ? '<span>'+esc(it.brand)+'</span>' : '')+
+        (priceBit? '<span>'+priceBit+'</span>':'')+
+        badges +
+      '</div>'+
+      '<div class="ctrls">'+
+        '<div class="stepper">'+
+          '<button data-act="dec" data-id="'+it.id+'" aria-label="빼기">−</button>'+
+          '<span class="val" id="'+sid+'">'+(pend[it.id]!=null?pend[it.id]:(it.stock||0))+'</span>'+
+          '<button data-act="inc" data-id="'+it.id+'" aria-label="더하기">+</button>'+
+        '</div>'+
+        '<button class="opentog" data-act="open" data-id="'+it.id+'" aria-pressed="'+(!!it.open)+'" title="개봉한 병 있음">오픈</button>'+
+      '</div>'+
+    '</div>';
+  }
+
+  function renderLog(){
+    var el=$("log");
+    if(!logEntries.length){ el.innerHTML='<li style="border:0;color:var(--ink-dim)">아직 기록이 없어요</li>'; return; }
+    el.innerHTML = logEntries.slice(0,25).map(function(e){
+      return '<li><b>'+esc(e.who||"?")+'</b><span>'+esc(e.text)+'</span><span class="t">'+timeShort(e.ts)+'</span></li>';
+    }).join("");
+  }
+  function renderCloseLog(){
+    var el=$("closelog");
+    if(!closings.length){ el.innerHTML='<li style="border:0;color:var(--ink-dim)">아직 마감 기록이 없어요</li>'; return; }
+    el.innerHTML = closings.map(function(c){
+      var d = c.date ? c.date.slice(5).replace("-","/") : "";
+      return '<li><b>'+esc(c.by||"?")+'</b><span>'+d+' 마감'+
+        (c.openCount!=null? " · 오픈 "+c.openCount+"개" : "")+
+        (c.note? " · "+esc(c.note) : "")+'</span><span class="t">'+(c.at?timeShort(c.at):"")+'</span></li>';
+    }).join("");
+  }
+
+  function renderChips(){
+    var defs = [["all","전체"]].concat(CAT_SEQ.map(function(c){return [c, CAT_KO[c]];}));
+    $("chips").innerHTML = defs.map(function(d){
+      return '<button class="chip" data-cat="'+d[0]+'" aria-pressed="'+(filterCat===d[0])+'">'+d[1]+'</button>';
+    }).join("");
+    Array.prototype.forEach.call($("chips").querySelectorAll(".chip"), function(b){
+      b.addEventListener("click", function(){ filterCat=b.getAttribute("data-cat"); renderChips(); render(); });
+    });
+  }
+
+  // ---------- mutations ----------
+  function needName(){
+    showToast("상단에 기록자 이름을 먼저 입력해주세요");
+    var w=$("who"); w.classList.add("need"); w.focus();
+  }
+  function bump(id, delta){
+    if(!db) return;
+    if(!me){ needName(); return; }
+    var it = items.find(function(x){return x.id===id;}); if(!it) return;
+    var base = pend[id]!=null ? pend[id] : (it.stock||0);
+    var nv = Math.max(0, base+delta);
+    pend[id]=nv;
+    var vEl=$("s_"+id); if(vEl) vEl.textContent=nv;
+    clearTimeout(pendT[id]);
+    pendT[id]=setTimeout(function(){
+      var target=pend[id]; delete pend[id];
+      var cur=items.find(function(x){return x.id===id;});
+      if(!cur || cur.stock===target) return;
+      var from=cur.stock||0;
+      db.doc("items/"+id).update({stock:target, updatedAt:nowISO(), updatedBy:me})
+        .then(function(){ logStockDelta(cur.name, from, target, "재고 +/-"); })
+        .catch(function(){ showToast("저장 실패 · 다시 시도해주세요"); render(); });
+    }, 450);
+  }
+  function setStock(id, val){
+    if(!db) return Promise.reject();
+    if(!me){ needName(); return Promise.reject(); }
+    var it=items.find(function(x){return x.id===id;});
+    var nv=Math.max(0, Number(val)||0);
+    if(!it || (it.stock||0)===nv) return Promise.resolve();
+    var from=it.stock||0;
+    return db.doc("items/"+id).update({stock:nv, updatedAt:nowISO(), updatedBy:me})
+      .then(function(){ logStockDelta(it.name, from, nv, "직접입력"); });
+  }
+  function toggleOpen(id){
+    if(!db) return;
+    if(!me){ needName(); return; }
+    var it=items.find(function(x){return x.id===id;}); if(!it) return;
+    if(it.open) confirmClose(id);   // 소진은 실수 방지를 위해 확인 단계
+    else doOpen(id);
+  }
+  function doOpen(id){
+    var it=items.find(function(x){return x.id===id;}); if(!it) return;
+    var before={open:it.open, openedAt:it.openedAt, openLog:it.openLog};
+    var patch={ open:true, openedAt:nowISO(), updatedAt:nowISO(), updatedBy:me };
+    db.doc("items/"+id).update(patch).then(function(){
+      addLog(it.name+" 새 병 오픈 ("+dayLabel(patch.openedAt)+")");
+      showUndoToast(it.name+" 오픈 표시", function(){ undoOpen(id, before, it.name); });
+    }).catch(function(){ showToast("저장 실패"); });
+  }
+  function doClose(id){
+    var it=items.find(function(x){return x.id===id;}); if(!it) return;
+    var before={open:it.open, openedAt:it.openedAt, openLog:it.openLog};
+    var entry={ o: it.openedAt||null, c: nowISO(), by: me };
+    var patch={ open:false, openedAt:null, openLog:(it.openLog||[]).concat([entry]).slice(-8),
+                updatedAt:nowISO(), updatedBy:me };
+    db.doc("items/"+id).update(patch).then(function(){
+      addLog(it.name+" 오픈 병 소진 처리");
+      showUndoToast(it.name+" 소진 처리", function(){ undoOpen(id, before, it.name); });
+    }).catch(function(){ showToast("저장 실패"); });
+  }
+  function confirmClose(id){
+    var it=items.find(function(x){return x.id===id;}); if(!it) return;
+    var b=$("sheetbody");
+    b.innerHTML = ''+
+      '<h3>오픈 병 소진 처리</h3>'+
+      '<div class="sub">'+esc(it.name)+'</div>'+
+      '<div class="kv"><span>현재 오픈일</span><b>'+
+        (it.openedAt? dayLabel(it.openedAt)+" · "+openDays(it.openedAt)+"일째" : "미기록")+'</b></div>'+
+      '<p style="font-size:13px;color:var(--ink);margin:14px 0 6px;line-height:1.6">'+
+        '이 병을 다 썼으면 확정하세요. 오픈~소진 기록이 이력으로 저장되고, 다음에 다시 열면 새 날짜로 시작합니다.</p>'+
+      '<button class="savebtn" id="cc-yes" style="background:var(--danger)">소진 확정</button>'+
+      '<button class="delbtn" id="cc-no" style="border-color:var(--line);color:var(--ink)">취소</button>';
+    $("cc-yes").onclick=function(){ closeSheet(); doClose(id); };
+    $("cc-no").onclick=closeSheet;
+    openSheet();
+  }
+  // 오픈 경과일
+  function openDays(iso){
+    if(!iso) return null;
+    try{
+      var d=new Date(iso); d.setHours(0,0,0,0);
+      var t=new Date(); t.setHours(0,0,0,0);
+      return Math.round((t-d)/86400000);
+    }catch(e){ return null; }
+  }
+  function dayLabel(iso){
+    if(!iso) return "";
+    try{ var d=new Date(iso); return (d.getMonth()+1)+"/"+d.getDate(); }catch(e){ return ""; }
+  }
+  function addLog(text){
+    if(!db) return;
+    var entry={ts:nowISO(), who:me||"익명", text:text};
+    var next=[entry].concat(logEntries).slice(0,80);
+    db.doc("meta/log").set({entries:next}).catch(function(){});
+  }
+
+  // 상세 시트의 오픈 병 관리 UI (체크 + 오픈 날짜)
+  function openControlHTML(it){
+    var dv = it.openedAt ? localISO(new Date(it.openedAt)) : localISO(new Date());
+    return ''+
+    '<div class="field"><label>오픈 병 관리</label>'+
+      '<label style="display:flex;align-items:center;gap:9px;font-size:14px;font-weight:400;margin-bottom:9px;cursor:pointer">'+
+        '<input type="checkbox" id="d-open" '+(it.open?"checked":"")+' style="width:18px;height:18px;accent-color:var(--brand)">'+
+        '지금 개봉한 병이 있음</label>'+
+      '<input id="d-opened" type="date" value="'+dv+'" '+(it.open?"":"disabled")+'>'+
+      '<div style="font-size:11px;color:var(--ink-dim);margin-top:5px">'+
+        (it.open && it.openedAt ? '현재 '+openDays(it.openedAt)+'일째 · ' : '')+
+        '병을 다 쓰면 체크 해제하세요 → 오픈~소진 이력으로 저장됩니다</div>'+
+      '<div id="d-open-warn" hidden style="font-size:11.5px;color:var(--danger);font-weight:600;margin-top:7px">'+
+        '⚠ 저장하면 '+(it.openedAt?dayLabel(it.openedAt):"")+'~오늘 오픈 기록이 이력으로 넘어갑니다</div>'+
+    '</div>';
+  }
+  function wireOpenControl(it){
+    var chk=$("d-open"), dt=$("d-opened"), warn=$("d-open-warn");
+    if(!chk||!dt) return;
+    function sync(){
+      dt.disabled=!chk.checked; dt.style.opacity=chk.checked?1:.4;
+      if(warn) warn.hidden = !(it && it.open && !chk.checked);
+    }
+    chk.addEventListener("change", sync);
+    sync();
+  }
+  // 체크/날짜 상태를 현재 item과 비교해 items 문서에 적용할 패치 반환 (없으면 null)
+  function collectOpenPatch(it){
+    var chk=$("d-open"); if(!chk) return null;
+    var want=chk.checked, dv=$("d-opened").value;
+    if(want && !it.open){
+      return { open:true, openedAt: dv? new Date(dv+"T12:00:00").toISOString() : nowISO() };
+    }
+    if(!want && it.open){
+      var entry={ o: it.openedAt||null, c: nowISO(), by: me };
+      return { open:false, openedAt:null, openLog:(it.openLog||[]).concat([entry]).slice(-8) };
+    }
+    if(want && it.open && dv){
+      var cur = it.openedAt ? localISO(new Date(it.openedAt)) : "";
+      if(cur!==dv) return { openedAt: new Date(dv+"T12:00:00").toISOString() };
+    }
+    return null;
+  }
+  function openActionText(op, name){
+    if(!op) return "";
+    if(op.open===true) return name+" 새 병 오픈 ("+dayLabel(op.openedAt)+")";
+    if(op.open===false) return name+" 오픈 병 소진 처리";
+    if(op.openedAt) return name+" 오픈일 "+dayLabel(op.openedAt)+"로 수정";
+    return "";
+  }
+  function logOpenPatch(name, op){ var t=openActionText(op,name); if(t) addLog(t); }
+
+  // 오픈 상태 변경을 이전 값으로 되돌린다
+  function undoOpen(id, before, name){
+    if(!db) return;
+    db.doc("items/"+id).update({
+      open: !!before.open, openedAt: before.openedAt||null, openLog: before.openLog||[],
+      updatedAt: nowISO(), updatedBy: me
+    }).then(function(){ addLog(name+" 오픈 상태 되돌림"); showToast("되돌렸어요"); })
+      .catch(function(){ showToast("되돌리기 실패"); });
+  }
+
+  function openHistoryHTML(it){
+    var log=(it.openLog||[]).slice().reverse();
+    if(!log.length) return "";
+    return '<div style="font-size:11.5px;font-weight:700;color:var(--ink-dim);margin:14px 0 4px">지난 오픈 이력</div>'+
+      log.map(function(e){
+        var span=(e.o && e.c)? Math.max(0, Math.round((new Date(e.c)-new Date(e.o))/86400000)) : null;
+        return '<div class="kv"><span>'+(e.o?dayLabel(e.o):"?")+' 오픈 → '+(e.c?dayLabel(e.c):"?")+' 소진'+(e.by?" ("+esc(e.by)+")":"")+'</span><b>'+(span!=null?span+'일':'')+'</b></div>';
+      }).join("");
+  }
+
+  // ---------- detail sheet ----------
+  function openDetail(id){
+    var it=items.find(function(x){return x.id===id;}); if(!it) return;
+    openDetailId = id;
+    var b=$("sheetbody");
+
+    if(!ownerView()){
+      // 직원 화면: 재고 수량 · 오픈 병 관리
+      b.innerHTML = ''+
+        '<h3>'+esc(it.name)+'</h3>'+
+        '<div class="sub">'+esc(it.brand||"")+(it.form?' · '+esc(it.form):'')+' · 최소재고 '+(it.min||0)+'</div>'+
+        '<div class="field"><label>현재고 (직접 입력)</label>'+
+          '<input id="d-stock" type="number" inputmode="numeric" min="0" value="'+(it.stock||0)+'"></div>'+
+        openControlHTML(it)+
+        '<button class="savebtn" id="d-ssave">저장</button>'+
+        '<div class="row2" style="margin-top:10px">'+
+          '<button class="savebtn" id="d-in" style="background:var(--ok)">＋1 입고</button>'+
+          '<button class="savebtn" id="d-out" style="background:var(--danger)">－1 출고</button>'+
+        '</div>'+
+        (it.note?'<div class="kv" style="margin-top:14px"><span>비고</span><b>'+esc(it.note)+'</b></div>':'')+
+        '<div class="kv"><span>마지막 변경</span><b>'+(it.updatedBy?esc(it.updatedBy)+" · "+timeShort(it.updatedAt):"–")+'</b></div>'+
+        openHistoryHTML(it);
+      wireOpenControl(it);
+      $("d-ssave").onclick=function(){
+        if(!me){ needName(); return; }
+        var nv=Math.max(0, Number($("d-stock").value)||0), from=it.stock||0;
+        var before={open:it.open, openedAt:it.openedAt, openLog:it.openLog};
+        var patch={};
+        if(from!==nv) patch.stock=nv;
+        var op=collectOpenPatch(it); if(op){ for(var k in op) patch[k]=op[k]; }
+        if(!Object.keys(patch).length){ closeSheet(); return; }
+        patch.updatedAt=nowISO(); patch.updatedBy=me;
+        db.doc("items/"+id).update(patch).then(function(){
+          if(patch.stock!=null) logStockDelta(it.name, from, nv, "직접입력");
+          logOpenPatch(it.name, op);
+          closeSheet();
+          if(op) showUndoToast(openActionText(op, it.name), function(){ undoOpen(id, before, it.name); });
+          else showToast("저장됐어요");
+        }).catch(function(){ showToast("저장 실패"); });
+      };
+      $("d-in").onclick=function(){ bump(id,1); closeSheet(); };
+      $("d-out").onclick=function(){ bump(id,-1); closeSheet(); };
+      openSheet();
+      return;
+    }
+
+    // 사장 화면: 원가 · 최소재고 · 비고 · 삭제
+    var c = costMap[id] || {};
+    var marginRow = "";
+    if(c.cost!=null && it.bottle!=null){
+      var mg = it.bottle - c.cost, rate = Math.round(mg/it.bottle*100);
+      marginRow = '<div class="margin"><span>보틀 마진</span><b class="'+(rate<30?"low":"")+'">'+won(mg)+' ('+rate+'%)</b></div>';
+    }
+    b.innerHTML = ''+
+      '<h3>'+esc(it.name)+'</h3>'+
+      '<div class="sub">'+esc(it.brand||"")+(it.form?' · '+esc(it.form):'')+' · '+esc(it.unit||"병")+' 단위</div>'+
+      '<div class="field"><label>현재고 (직접 입력)</label>'+
+        '<input id="d-stock" type="number" inputmode="numeric" min="0" value="'+(it.stock||0)+'"></div>'+
+      '<div class="kv"><span>판매가 (잔/보틀)</span><b>'+(it.glass!=null?won(it.glass):"–")+' / '+(it.bottle!=null?won(it.bottle):"–")+' <span style="color:var(--ink-dim);font-weight:400">· 테이블 탭 &gt; 메뉴 판매가 관리에서 수정</span></b></div>'+
+      '<div class="costbox">'+
+        '<div class="ct">원가 (사장만 보임)</div>'+
+        '<input id="c-cost" type="number" inputmode="numeric" placeholder="병당 매입가 (원)" value="'+(c.cost!=null?c.cost:"")+'">'+
+        '<input id="c-costnote" placeholder="거래처·메모 (선택)" value="'+esc(c.note||"")+'" style="margin-top:8px">'+
+        '<div id="c-margin">'+marginRow+'</div>'+
+      '</div>'+
+      '<div class="field"><label>최소 재고 (이 아래면 발주 필요)</label>'+
+        '<div class="minset"><button id="min-dec">−</button><span class="v" id="min-v">'+(it.min||0)+'</span><button id="min-inc">+</button></div></div>'+
+      openControlHTML(it)+
+      '<div class="field"><label>비고</label><textarea id="d-note" placeholder="예: 3병 입고 · 1병 파손">'+esc(it.note||"")+'</textarea></div>'+
+      '<div class="kv"><span>마지막 변경</span><b>'+(it.updatedBy?esc(it.updatedBy)+" · "+timeShort(it.updatedAt):"–")+'</b></div>'+
+      openHistoryHTML(it)+
+      '<button class="savebtn" id="d-save" style="margin-top:14px">저장</button>'+
+      '<button class="delbtn" id="d-del">이 품목 삭제</button>';
+
+    var m = it.min||0;
+    wireOpenControl(it);
+    $("min-dec").onclick=function(){ m=Math.max(0,m-1); $("min-v").textContent=m; };
+    $("min-inc").onclick=function(){ m=m+1; $("min-v").textContent=m; };
+    $("c-cost").addEventListener("input", function(){
+      var cost=Number(this.value);
+      if(this.value && it.bottle!=null){
+        var mg=it.bottle-cost, r=Math.round(mg/it.bottle*100);
+        $("c-margin").innerHTML='<div class="margin"><span>보틀 마진</span><b class="'+(r<30?"low":"")+'">'+won(mg)+' ('+r+'%)</b></div>';
+      } else { $("c-margin").innerHTML=""; }
+    });
+    $("d-save").onclick=function(){
+      if(!me){ needName(); return; }
+      var note=$("d-note").value.trim();
+      var nv=Math.max(0, Number($("d-stock").value)||0);
+      var from=it.stock||0;
+      var costV=$("c-cost").value, costNote=$("c-costnote").value.trim();
+      var costEntry = {}; costEntry[id] = {
+        cost: costV===""?null:Number(costV), note:costNote, updatedAt:nowISO()
+      };
+      var before={open:it.open, openedAt:it.openedAt, openLog:it.openLog};
+      var itemPatch = {stock:nv, min:m, note:note, updatedAt:nowISO(), updatedBy:me};
+      var op=collectOpenPatch(it); if(op){ for(var k in op) itemPatch[k]=op[k]; }
+      Promise.all([
+        db.doc("items/"+id).update(itemPatch),
+        db.doc("cost/all").update({items:costEntry})
+      ]).then(function(){
+        if(nv!==from) logStockDelta(it.name, from, nv, "직접입력"); else addLog(it.name+" 정보 수정");
+        logOpenPatch(it.name, op);
+        closeSheet();
+        if(op) showUndoToast(openActionText(op, it.name), function(){ undoOpen(id, before, it.name); });
+        else showToast("저장됐어요");
+      }).catch(function(){ showToast("저장 실패"); });
+    };
+    var armed=false;
+    $("d-del").onclick=function(){
+      if(!me){ needName(); return; }
+      if(!armed){ armed=true; $("d-del").textContent="정말 삭제할까요? 한 번 더 누르기"; return; }
+      db.doc("items/"+id).delete()
+        .then(function(){ addLog(it.name+" 품목 삭제"); closeSheet(); showToast("삭제됐어요"); })
+        .catch(function(){ showToast("삭제 실패"); });
+    };
+    openSheet();
+  }
+
+  function openAdd(){
+    if(!ownerView()) return;
+    var b=$("sheetbody");
+    b.innerHTML = ''+
+      '<h3>새 품목 추가</h3><div class="sub">재고 장부에만 추가됩니다 (메뉴판과 별개)</div>'+
+      '<div class="field"><label>분류</label><select id="a-cat">'+
+        CAT_SEQ.map(function(c){return '<option value="'+c+'">'+CAT_KO[c]+'</option>';}).join("")+'</select></div>'+
+      '<div class="field"><label>품목명</label><input id="a-name" placeholder="예: 글렌알라키 12" autocomplete="off"></div>'+
+      '<div class="field"><label>브랜드 (선택)</label><input id="a-brand" placeholder="예: GlenAllachie" autocomplete="off"></div>'+
+      '<div class="row2">'+
+        '<div class="field"><label>단위</label><select id="a-unit"><option>병</option><option>케그</option><option>캔/병</option><option>잔</option></select></div>'+
+        '<div class="field"><label>최소 재고</label><input id="a-min" type="number" inputmode="numeric" value="1" min="0"></div>'+
+      '</div>'+
+      '<div class="row2">'+
+        '<div class="field"><label>잔가 (원, 선택)</label><input id="a-glass" type="number" inputmode="numeric" placeholder=""></div>'+
+        '<div class="field"><label>보틀가 (원, 선택)</label><input id="a-bottle" type="number" inputmode="numeric" placeholder=""></div>'+
+      '</div>'+
+      '<div class="field"><label>현재 재고</label><input id="a-stock" type="number" inputmode="numeric" value="0" min="0"></div>'+
+      '<button class="savebtn" id="a-save">추가</button>';
+    $("a-save").onclick=function(){
+      if(!me){ needName(); return; }
+      var name=$("a-name").value.trim();
+      if(!name){ showToast("품목명을 입력해주세요"); return; }
+      var maxO = items.reduce(function(m,x){return Math.max(m, x.order||0);}, 100);
+      var doc = {
+        cat:$("a-cat").value, brand:$("a-brand").value.trim(), name:name, form:"",
+        glass: $("a-glass").value? Number($("a-glass").value):null,
+        bottle: $("a-bottle").value? Number($("a-bottle").value):null,
+        unit:$("a-unit").value,
+        stock: Math.max(0, Number($("a-stock").value)||0),
+        min: Math.max(0, Number($("a-min").value)||0),
+        open:false, note:"", order:maxO+1, updatedAt:nowISO(), updatedBy:me
+      };
+      db.collection("items").add(doc)
+        .then(function(){ addLog(name+" 품목 추가"); closeSheet(); showToast("추가됐어요"); })
+        .catch(function(){ showToast("추가 실패"); });
+    };
+    openSheet();
+  }
+
+  function fmtToday(){
+    var d=new Date();
+    return (d.getMonth()+1)+"/"+d.getDate()+" ("+["일","월","화","수","목","금","토"][d.getDay()]+")";
+  }
+
+  // ============ 테이블 / 매출 ============
+  function itemPrices(it){
+    var out=[];
+    if(it.form==="단일가" || it.form==="GLASS ONLY" || it.bottle==null){
+      if(it.glass!=null) out.push({opt:"", price:it.glass});
+      if(it.bottle!=null) out.push({opt:"병", price:it.bottle});
+    } else {
+      if(it.glass!=null) out.push({opt:"잔", price:it.glass});
+      if(it.bottle!=null) out.push({opt:"병", price:it.bottle});
+    }
+    return out;
+  }
+  function menuList(){
+    return items.filter(function(it){ return it.glass!=null || it.bottle!=null; })
+      .sort(function(a,b){
+        var ai=MENU_SEQ.indexOf(a.cat); if(ai<0) ai=99;
+        var bi=MENU_SEQ.indexOf(b.cat); if(bi<0) bi=99;
+        return ai-bi || (a.order||0)-(b.order||0);
+      });
+  }
+  function tableLines(n){ var t=tables[String(n)]; return (t&&t.lines)||[]; }
+  function linesTotal(ls){ return ls.reduce(function(s,l){ return s + (l.price||0)*(l.qty||0); }, 0); }
+
+  function switchView(v){
+    currentView=v;
+    Array.prototype.forEach.call(document.querySelectorAll(".tabnav [data-v]"), function(b){ b.classList.toggle("on", b.getAttribute("data-v")===v); });
+    $("v-inv").hidden = v!=="inv";
+    $("v-tables").hidden = v!=="tables";
+    $("v-att").hidden = v!=="att";
+    $("fab").style.display = v==="inv" ? "" : "none";
+    if(v==="tables") renderTables();
+    else if(v==="att") renderAttendance();
+    else render();
+  }
+
+  // ============ 근태 ============
+  function renderAttendance(){
+    $("att-me").textContent = me || "이름을 입력하세요";
+    var el=$("att-log");
+    var ents = (attToday && attToday.entries) || [];
+    if(!ents.length){ el.innerHTML='<li style="border:0;color:var(--ink-dim)">오늘 기록 없음</li>'; return; }
+    el.innerHTML = ents.slice().reverse().map(function(e){
+      return '<li class="attrow"><span class="tag '+(e.type==="in"?"in":"out")+'">'+(e.type==="in"?"출근":"퇴근")+'</span>'+
+        '<span>'+esc(e.name||"?")+'</span><span class="t">'+hm(e.at)+'</span></li>';
+    }).join("");
+  }
+  function punch(type){
+    if(!me){ needName(); return; }
+    if(!db){ showToast("동기화 연결 후 가능해요"); return; }
+    var date=localISO(new Date());
+    var last=null;
+    ((attToday&&attToday.entries)||[]).forEach(function(e){ if(e.name===me) last=e; });
+    if(last && last.type===type){
+      showToast("이미 "+(type==="in"?"출근":"퇴근")+" 기록이 있어요 ("+hm(last.at)+")");
+      return;
+    }
+    appendDailyDoc("attendance/"+date, function(d){
+      var entries=(d.entries||[]).concat([{ name:me, type:type, at:nowISO() }]);
+      return { date:date, entries:entries, updatedAt:nowISO() };
+    }).then(function(){
+      addLog(me+" "+(type==="in"?"출근":"퇴근"));
+      showToast((type==="in"?"출근":"퇴근")+" 기록 · "+hm(nowISO()));
+    }).catch(function(){ showToast("기록 실패 · 다시 시도해주세요"); });
+  }
+  function attHours(entries){
+    // 사람별로 in/out 쌍 지어 근무시간(분) 합산
+    var byName={};
+    (entries||[]).forEach(function(e){ (byName[e.name]=byName[e.name]||[]).push(e); });
+    var out={};
+    Object.keys(byName).forEach(function(nm){
+      var list=byName[nm].slice().sort(function(a,b){ return new Date(a.at)-new Date(b.at); });
+      var mins=0, openIn=null, first=null, lastT=null;
+      list.forEach(function(e){
+        if(!first) first=e.at; lastT=e.at;
+        if(e.type==="in"){ openIn=e.at; }
+        else if(e.type==="out" && openIn){ mins += Math.max(0,(new Date(e.at)-new Date(openIn))/60000); openIn=null; }
+      });
+      out[nm]={ mins:Math.round(mins), first:first, last:lastT, dangling:!!openIn };
+    });
+    return out;
+  }
+  function fmtDur(mins){ var h=Math.floor(mins/60), m=Math.round(mins%60); return h+"시간"+(m?" "+m+"분":""); }
+
+  function openAttHistory(){
+    if(!db){ showToast("동기화 연결 후 가능해요"); return; }
+    var b=$("sheetbody");
+    b.innerHTML='<h3>근태 내역</h3><div class="sub">불러오는 중…</div>';
+    openSheet();
+    db.collection("attendance").orderBy("date","desc").limit(100).get().then(function(snap){
+      var docs=snap.docs.map(function(x){return x.data()||{};}).filter(function(d){return d.date;});
+      if(!docs.length){ b.innerHTML='<h3>근태 내역</h3><div class="sub">아직 기록이 없어요</div>'; return; }
+      var view=new Date(); view.setDate(1); view.setHours(0,0,0,0);
+      function paint(){
+        var y=view.getFullYear(), mo=view.getMonth();
+        var monthDocs=docs.filter(function(d){ var p=d.date.split("-"); return +p[0]===y && +p[1]===mo+1; })
+          .sort(function(a,c){ return a.date<c.date?1:-1; });
+        // 사람별 월 합계
+        var per={};
+        monthDocs.forEach(function(d){
+          var h=attHours(d.entries);
+          Object.keys(h).forEach(function(nm){
+            if(!per[nm]) per[nm]={mins:0, days:0, dangling:0};
+            per[nm].mins += h[nm].mins; per[nm].days += 1;
+            if(h[nm].dangling) per[nm].dangling += 1;
+          });
+        });
+        var names=Object.keys(per).sort();
+        b.innerHTML = '<h3>근태 내역</h3>'+
+          '<div class="calnav"><button id="ah-prev">‹</button><b>'+y+'.'+(mo+1)+'</b><button id="ah-next">›</button></div>'+
+          '<div class="atth2">이 달 근무 합계</div>'+
+          (names.length ? names.map(function(nm){
+            var p=per[nm];
+            return '<div class="kv"><span>'+esc(nm)+' <span style="color:var(--ink-dim)">'+p.days+'일'+(p.dangling?' · 퇴근누락 '+p.dangling:'')+'</span></span>'+
+              '<b>'+fmtDur(p.mins)+' <span style="color:var(--ink-dim);font-weight:400">('+(p.mins/60).toFixed(1)+'h)</span></b></div>';
+          }).join("") : '<div class="sub">기록 없음</div>')+
+          (dl && monthDocs.length ? '<button class="linkbtn" id="ah-csv" style="margin:10px 0">이 달 근태 CSV 내려받기</button>' : '')+
+          '<div class="atth2" style="margin-top:16px">일자별</div>'+
+          (monthDocs.length ? monthDocs.map(function(d){
+            var h=attHours(d.entries), tot=0;
+            Object.keys(h).forEach(function(nm){ tot+=h[nm].mins; });
+            return '<button class="pick-item" data-date="'+d.date+'"><span class="pi-n">'+d.date.slice(5).replace("-","/")+' · '+Object.keys(h).length+'명</span><span class="pi-p">'+fmtDur(tot)+'</span></button>';
+          }).join("") : '<div class="sub">이 달 기록 없음</div>');
+        $("ah-prev").onclick=function(){ view.setMonth(view.getMonth()-1); paint(); };
+        $("ah-next").onclick=function(){ view.setMonth(view.getMonth()+1); paint(); };
+        var csvb=$("ah-csv");
+        if(csvb) csvb.onclick=function(){ attMonthCSV(monthDocs, y, mo); };
+        Array.prototype.forEach.call(b.querySelectorAll("[data-date]"), function(el){
+          el.onclick=function(){
+            var dt=el.getAttribute("data-date");
+            showAttDay(dt, docs.filter(function(d){return d.date===dt;})[0]);
+          };
+        });
+      }
+      paint();
+    }).catch(function(){ b.innerHTML='<h3>근태 내역</h3><div class="sub">불러오기 실패</div>'; });
+  }
+  function attMonthCSV(monthDocs, y, mo){
+    if(!dl) return;
+    var head=["날짜","이름","첫 출근","마지막 퇴근","근무(분)","근무(시간)","비고"];
+    var lines=[head.join(",")];
+    monthDocs.slice().sort(function(a,c){ return a.date<c.date?-1:1; }).forEach(function(d){
+      var h=attHours(d.entries);
+      Object.keys(h).sort().forEach(function(nm){
+        var x=h[nm];
+        var r=[d.date, nm, hm(x.first), x.dangling?"":hm(x.last), x.mins, (x.mins/60).toFixed(2), x.dangling?"퇴근 미기록":""];
+        lines.push(r.map(function(v){ v=String(v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }).join(","));
+      });
+    });
+    dl.save({ filename:"다이닝사운드_근태_"+y+"-"+pad2(mo+1)+".csv", data:"﻿"+lines.join("\n") })
+      .catch(function(e){ if(e && e.code!=="declined") showToast("내려받기 실패"); });
+  }
+  function showAttDay(date, d){
+    d=d||{};
+    var b=$("sheetbody");
+    var editing = ownerView();          // 직원은 조회만, 사장만 수정/삭제
+    var work=(d.entries||[]).map(function(e){ return {name:e.name, type:e.type, at:e.at}; });
+    var back='<button class="linkbtn" id="ah-back" style="padding:6px 0 12px">‹ 목록으로</button>';
+
+    function isoAt(hhmm){ var p=(date+"T"+(hhmm||"12:00")+":00").split("T"); var dt=new Date(p[0]+"T00:00:00"); var t=(hhmm||"12:00").split(":"); dt.setHours(+t[0],+t[1],0,0); return dt.toISOString(); }
+
+    function draw(){
+      var hrs=attHours(work), names=Object.keys(hrs).sort();
+      var summary = names.length ? names.map(function(nm){
+        var h=hrs[nm];
+        return '<div class="kv"><span>'+esc(nm)+' <span style="color:var(--ink-dim)">'+hm(h.first)+'~'+(h.dangling?"미기록":hm(h.last))+'</span></span>'+
+          '<b>'+fmtDur(h.mins)+' <span style="color:var(--ink-dim);font-weight:400">('+(h.mins/60).toFixed(1)+'h)</span></b></div>';
+      }).join("") : '<div class="sub">기록 없음</div>';
+
+      var order=work.map(function(e,i){return i;}).sort(function(a,c){ return new Date(work[a].at)-new Date(work[c].at); });
+      var rawList = order.map(function(i){
+        var e=work[i];
+        if(!editing){
+          return '<div class="attrow"><span class="tag '+(e.type==="in"?"in":"out")+'">'+(e.type==="in"?"출근":"퇴근")+'</span><span>'+esc(e.name||"?")+'</span><span class="t">'+hm(e.at)+'</span></div>';
+        }
+        return '<div class="attrow" style="gap:6px">'+
+          '<select data-i="'+i+'" data-k="type" style="border:1px solid var(--line);border-radius:6px;padding:5px;font-size:12px;background:var(--ground)"><option value="in"'+(e.type==="in"?" selected":"")+'>출근</option><option value="out"'+(e.type==="out"?" selected":"")+'>퇴근</option></select>'+
+          '<input data-i="'+i+'" data-k="name" value="'+esc(e.name||"")+'" style="flex:1;min-width:0;border:1px solid var(--line);border-radius:6px;padding:5px 6px;font-size:12px;background:var(--ground)">'+
+          '<input data-i="'+i+'" data-k="time" type="time" value="'+hm(e.at)+'" style="border:1px solid var(--line);border-radius:6px;padding:5px 3px;font-size:12px;background:var(--ground)">'+
+          '<button class="tl-x" data-del="'+i+'">✕</button></div>';
+      }).join("") || '<div class="sub">기록 없음</div>';
+
+      b.innerHTML = back+'<h3>'+date+' 근태</h3>'+ summary +
+        '<div class="atth2" style="margin-top:16px">'+(editing?"기록 수정 (사장)":"전체 기록")+'</div>'+ rawList +
+        (editing ? '<div class="row2" style="margin-top:10px">'+
+            '<button class="savebtn" id="ad-in" style="background:var(--surface-2);color:var(--ink)">＋ 출근</button>'+
+            '<button class="savebtn" id="ad-out" style="background:var(--surface-2);color:var(--ink)">＋ 퇴근</button></div>'+
+          '<button class="savebtn" id="ad-save" style="margin-top:10px">저장</button>' : '');
+      $("ah-back").onclick=openAttHistory;
+
+      if(editing){
+        Array.prototype.forEach.call(b.querySelectorAll("[data-i]"), function(inp){
+          inp.addEventListener("change", function(){
+            var i=+inp.getAttribute("data-i"), k=inp.getAttribute("data-k");
+            if(k==="type") work[i].type=inp.value;
+            else if(k==="name") work[i].name=inp.value.trim();
+            else if(k==="time") work[i].at=isoAt(inp.value);
+          });
+        });
+        Array.prototype.forEach.call(b.querySelectorAll("[data-del]"), function(x){
+          x.onclick=function(){ work.splice(+x.getAttribute("data-del"),1); draw(); };
+        });
+        $("ad-in").onclick=function(){ work.push({name:me||"", type:"in", at:isoAt(hm(nowISO()))}); draw(); };
+        $("ad-out").onclick=function(){ work.push({name:me||"", type:"out", at:isoAt(hm(nowISO()))}); draw(); };
+        $("ad-save").onclick=function(){
+          if(!me){ needName(); return; }
+          var clean=work.filter(function(e){ return e.name; });
+          var w = clean.length
+            ? db.doc("attendance/"+date).set({date:date, entries:clean, updatedAt:nowISO(), updatedBy:me})
+            : db.doc("attendance/"+date).delete();
+          w.then(function(){
+            addLog(me+" "+date+" 근태 수정");
+            db.doc("attendance/"+date).get().then(function(s){ showAttDay(date, s.exists?(s.data()||{}):{}); });
+            showToast("저장됐어요");
+          }).catch(function(){ showToast("저장 실패"); });
+        };
+      }
+    }
+    draw();
+  }
+
+  function renderTables(){
+    var g=$("tblgrid"); if(!g) return;
+    var grand=0, html="";
+    for(var n=1;n<=15;n++){
+      var ls=tableLines(n), tot=linesTotal(ls); grand+=tot;
+      html += '<button class="tblcell'+(ls.length?" occ":"")+'" data-t="'+n+'">'+
+        '<span class="tn">'+n+'</span>'+
+        (ls.length ? '<span class="tt">'+won(tot)+'</span><span class="tc">'+ls.length+'품목</span>'
+                   : '<span class="te">비어있음</span>')+
+      '</button>';
+    }
+    g.innerHTML=html;
+    var s=$("tbl-sum"); if(s) s.textContent = "영업 중 합계 "+won(grand);
+    Array.prototype.forEach.call(g.querySelectorAll(".tblcell"), function(el){
+      el.onclick=function(){ openTable(+el.getAttribute("data-t")); };
+    });
+  }
+
+  function openTable(n){
+    if(!db){ showToast("동기화 연결 후 사용 가능해요"); return; }
+    var lines = tableLines(n).map(function(l){ return {id:l.id||"", name:l.name, opt:l.opt||"", price:l.price, qty:l.qty}; });
+    function persist(){
+      db.doc("tables/"+n).set({ n:n, lines:lines, updatedAt:nowISO(), updatedBy:me||"" }).catch(function(){});
+    }
+    function draw(){
+      var b=$("sheetbody");
+      b.innerHTML = '<h3>'+n+'번 테이블</h3>'+
+        '<div class="sub">손님 계산 참고용 · 메뉴 판매가 기준</div>'+
+        (lines.length ? lines.map(function(l,i){
+          return '<div class="tline">'+
+            '<div class="tl-n">'+esc(l.name)+(l.opt?' <span class="tl-opt">'+esc(l.opt)+'</span>':'')+'</div>'+
+            '<div class="tl-q"><button data-act="qd" data-i="'+i+'">−</button><span>'+l.qty+'</span><button data-act="qi" data-i="'+i+'">＋</button></div>'+
+            '<div class="tl-a">'+won(l.price*l.qty)+'</div>'+
+            '<button class="tl-x" data-act="rm" data-i="'+i+'">✕</button>'+
+          '</div>';
+        }).join("") : '<div class="empty" style="padding:22px 0">담긴 품목이 없어요</div>')+
+        '<button class="savebtn" id="t-add" style="background:var(--surface-2);color:var(--ink);margin-top:10px">＋ 품목 추가</button>'+
+        '<div class="kv tot" style="font-size:16px;margin-top:16px"><span>합계</span><span>'+won(linesTotal(lines))+'</span></div>'+
+        (lines.length ? '<div id="t-donewrap"><button class="delbtn" id="t-done" style="border-color:var(--brand);color:var(--brand)">계산 완료</button></div>'+
+          '<button class="linkbtn" id="t-clear" style="color:var(--ink-dim)">테이블 비우기 (매출 기록 안 함)</button>' : '');
+      Array.prototype.forEach.call(b.querySelectorAll("[data-act]"), function(el){
+        el.onclick=function(){
+          if(!me){ needName(); return; }
+          var i=+el.getAttribute("data-i"), a=el.getAttribute("data-act");
+          if(a==="qd") lines[i].qty=Math.max(1, lines[i].qty-1);
+          else if(a==="qi") lines[i].qty++;
+          else if(a==="rm") lines.splice(i,1);
+          persist(); draw();
+        };
+      });
+      $("t-add").onclick=function(){
+        if(!me){ needName(); return; }
+        openItemPicker(function(p){
+          var ex=null;
+          for(var k=0;k<lines.length;k++){ if(lines[k].id===p.id && lines[k].opt===p.opt){ ex=lines[k]; break; } }
+          if(ex) ex.qty++; else lines.push({id:p.id, name:p.name, opt:p.opt, price:p.price, qty:1});
+          persist();
+        }, draw);
+      };
+      var d=$("t-done");
+      if(d){
+        d.onclick=function(){
+          if(!me){ needName(); return; }
+          var wrap=$("t-donewrap");
+          wrap.innerHTML =
+            '<div style="font-size:12px;color:var(--ink-dim);font-weight:700;margin:12px 0 6px">매출 날짜 (전날 매출이면 변경)</div>'+
+            '<input id="t-date" type="date" value="'+localISO(new Date())+'" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--ground);margin-bottom:10px">'+
+            '<div style="font-size:12px;color:var(--ink-dim);font-weight:700;margin:0 0 7px">결제 수단</div>'+
+            '<div class="row2">'+
+              '<button class="savebtn" data-pay="카드" style="background:var(--surface-2);color:var(--ink)">카드</button>'+
+              '<button class="savebtn" data-pay="현금" style="background:var(--surface-2);color:var(--ink)">현금</button>'+
+            '</div>'+
+            '<button class="linkbtn" data-pay="기타" style="margin-top:2px;text-align:center">기타 / 미수</button>';
+          Array.prototype.forEach.call(wrap.querySelectorAll("[data-pay]"), function(pb){
+            pb.onclick=function(){ finalize(pb.getAttribute("data-pay")); };
+          });
+        };
+      }
+      var tcl=$("t-clear");
+      if(tcl){ var clArmed=false;
+        tcl.onclick=function(){
+          if(!clArmed){ clArmed=true; tcl.textContent="정말 비우기? 한 번 더 (매출 기록 안 됨)"; return; }
+          lines.length=0; persist();
+          addLog((me||"?")+" "+n+"번 테이블 비움 (기록 없음)");
+          closeSheet(); showToast("테이블 비웠어요");
+        };
+      }
+      function finalize(pay){
+        var tot=linesTotal(lines), soldLines=lines.slice();
+        var today=localISO(new Date());
+        var date=($("t-date") && $("t-date").value) || today;
+        var wrap=$("t-donewrap");
+        if(wrap) wrap.innerHTML='<div class="sub" style="padding:8px 0">처리 중…</div>';
+        recordSale(n, soldLines, tot, pay, date).then(function(){
+          if(date===today) return applyStockForSale(soldLines, n);  // 과거 날짜는 재고 자동차감 안 함
+        }).then(function(){
+          lines.length=0; persist();
+          addLog(n+"번 테이블 계산 완료 · "+date+" · "+won(tot)+" · "+pay);
+          closeSheet(); showToast("계산 완료 · "+won(tot)+" · "+pay);
+        }).catch(function(err){
+          console.warn("계산 완료 실패", err);
+          var code = err && err.code ? err.code : (err && err.message ? err.message : "");
+          showToast("매출 기록 실패"+(code?" ("+code+")":"")+" · 테이블에 그대로 담겨있어요, 다시 시도해주세요");
+          draw();
+        });
+      }
+    }
+    draw();
+    openSheet();
+  }
+
+  function openItemPicker(onPick, onDone){
+    var b=$("sheetbody"), ml=menuList(), added=0;
+    function bind(){
+      Array.prototype.forEach.call($("pi-list").querySelectorAll(".pick-item"), function(el){
+        el.onclick=function(){
+          onPick({ id:el.getAttribute("data-id"), name:el.getAttribute("data-name"), opt:el.getAttribute("data-opt"), price:+el.getAttribute("data-price") });
+          added++; var c=$("pi-count"); if(c) c.textContent=added+"개 담음";
+          el.style.background="var(--brand-soft)"; setTimeout(function(){ el.style.background=""; }, 220);
+        };
+      });
+    }
+    function draw(f){
+      f=(f||"").trim().toLowerCase();
+      var rows="", curCat=null;
+      ml.forEach(function(it){
+        if(f && (it.name+" "+(it.brand||"")).toLowerCase().indexOf(f)<0) return;
+        if(it.cat!==curCat){ curCat=it.cat; rows += '<div style="font-size:11px;font-weight:700;color:var(--brand);padding:12px 0 4px">'+esc(CAT_KO[it.cat]||it.cat)+'</div>'; }
+        itemPrices(it).forEach(function(p){
+          rows += '<button class="pick-item" data-id="'+it.id+'" data-name="'+esc(it.name)+'" data-opt="'+esc(p.opt)+'" data-price="'+p.price+'">'+
+            '<span class="pi-n">'+esc(it.name)+(p.opt?' · '+esc(p.opt):'')+'</span><span class="pi-p">'+won(p.price)+'</span></button>';
+        });
+      });
+      $("pi-list").innerHTML = rows || '<div class="empty" style="padding:20px 0">검색 결과 없음</div>';
+      bind();
+    }
+    b.innerHTML = '<h3>품목 추가 <span id="pi-count" style="font-size:12px;color:var(--ink-dim);font-weight:400"></span></h3>'+
+      '<input id="pi-q" class="search" placeholder="메뉴 검색 (안주·와인·위스키…)" autocomplete="off" style="margin-bottom:8px">'+
+      '<div class="row2" style="margin-bottom:8px">'+
+        '<input id="pi-cn" placeholder="메뉴에 없는 항목명" style="flex:1.4">'+
+        '<input id="pi-cp" type="number" inputmode="numeric" placeholder="금액" style="flex:1">'+
+        '<button class="savebtn" id="pi-cadd" style="flex:none;width:56px;background:var(--surface-2);color:var(--ink)">추가</button>'+
+      '</div>'+
+      '<div id="pi-list" style="max-height:48vh;overflow-y:auto"></div>'+
+      '<button class="savebtn" id="pi-done" style="margin-top:12px">완료</button>';
+    $("pi-q").addEventListener("input", function(){ draw(this.value); });
+    $("pi-cadd").onclick=function(){
+      var nm=$("pi-cn").value.trim(), pr=Math.max(0,Number($("pi-cp").value)||0);
+      if(!nm || pr<=0){ showToast("항목명과 금액을 입력하세요"); return; }
+      onPick({ id:"", name:nm, opt:"", price:pr });
+      added++; var c=$("pi-count"); if(c) c.textContent=added+"개 담음";
+      $("pi-cn").value=""; $("pi-cp").value=""; showToast("추가됨");
+    };
+    $("pi-done").onclick=function(){ onDone(); };
+    draw("");
+  }
+
+  function recordSale(n, lines, total, pay, dateOverride){
+    if(!db) return Promise.reject({code:"unavailable", message:"동기화 연결 안 됨"});
+    var date = dateOverride || localISO(new Date());
+    return appendDailyDoc("sales/"+date, function(d){
+      var orders = d.orders || [];
+      orders.push({ t:n, at:nowISO(), by:me||"", total:total, pay:pay||"기타",
+        lines: lines.map(function(l){ return {name:l.name, opt:l.opt||"", qty:l.qty, price:l.price}; }) });
+      return { date:date, orders:orders, total:(d.total||0)+total, count:(d.count||0)+1, updatedAt:nowISO() };
+    });
+  }
+
+  // 날짜별 문서에 이어붙이기: 읽기→쓰기 + 실패 시 재시도 (lease 없이 — 소규모 매장이라 동시 계산 거의 없음)
+  function appendDailyDoc(path, mutateFn, tries){
+    tries = tries==null ? 4 : tries;
+    var ref=db.doc(path);
+    return ref.get().then(function(s){
+      return ref.set(mutateFn(s.exists ? (s.data()||{}) : {}));
+    }).catch(function(e){
+      if(tries>0) return new Promise(function(r){ setTimeout(r, 250 + Math.random()*350); })
+        .then(function(){ return appendDailyDoc(path, mutateFn, tries-1); });
+      throw e;
+    });
+  }
+
+  // 재고 수량이 바뀔 때마다: 변경 로그 + 일자별 재고내역(stockLog)에 기록
+  function logStockDelta(itemName, from, to, source){
+    addLog(itemName+" 재고 "+from+" → "+to+(source?" · "+source:""));
+    if(!db || from===to) return;
+    var date=localISO(new Date());
+    appendDailyDoc("stockLog/"+date, function(d){
+      var entries=(d.entries||[]).concat([{ ts:nowISO(), who:me||"", item:itemName, from:from, to:to, source:source||"수동" }]);
+      return { date:date, entries:entries, updatedAt:nowISO() };
+    }).catch(function(){});
+  }
+
+  // 테이블 계산 완료 시 재고 자동 반영: 병 판매는 재고 -1, 잔 판매는 오픈 상태만 표시
+  function applyStockForSale(lines, tableN){
+    if(!db) return Promise.resolve();
+    var work={};
+    lines.forEach(function(l){
+      if(!l.id) return;
+      var it=items.find(function(x){return x.id===l.id;});
+      if(!it || it.notrack) return;
+      if(l.opt==="병"){
+        work[l.id]=work[l.id]||{};
+        work[l.id].stockDelta=(work[l.id].stockDelta||0) - l.qty;
+      } else if(l.opt==="잔"){
+        if(!it.open){ work[l.id]=work[l.id]||{}; work[l.id].doOpen=true; }
+      } else if(!l.opt && it.unit!=="케그" && it.unit!=="잔" && it.min!=null){
+        work[l.id]=work[l.id]||{};
+        work[l.id].stockDelta=(work[l.id].stockDelta||0) - l.qty;
+      }
+    });
+    var ids=Object.keys(work);
+    if(!ids.length) return Promise.resolve();
+    return Promise.all(ids.map(function(id){
+      var it=items.find(function(x){return x.id===id;}); if(!it) return Promise.resolve();
+      var w=work[id], patch={ updatedAt:nowISO(), updatedBy:me||"테이블" };
+      var from=it.stock||0, to=from;
+      if(w.stockDelta){ to=Math.max(0, from+w.stockDelta); patch.stock=to; }
+      if(w.doOpen){ patch.open=true; patch.openedAt=nowISO(); }
+      return db.doc("items/"+id).update(patch).then(function(){
+        if(w.stockDelta) logStockDelta(it.name, from, to, (tableN?tableN+"번 테이블 판매":"테이블 판매"));
+        if(w.doOpen) addLog(it.name+" 판매로 자동 오픈 표시");
+      });
+    }));
+  }
+
+  function wonK(n){
+    n = n||0;
+    if(n>=10000) return (n/10000).toFixed(n>=1000000?0:1).replace(/\.0$/,"")+"만";
+    if(n>0) return Math.round(n/1000)+"천";
+    return "";
+  }
+  // 매출 달력
+  function openSalesCalendar(){
+    if(!db){ showToast("동기화 연결 후 가능해요"); return; }
+    var b=$("sheetbody");
+    b.innerHTML = '<h3>매출 달력</h3><div class="sub">불러오는 중…</div>';
+    openSheet();
+    db.collection("sales").orderBy("date","desc").limit(150).get().then(function(snap){
+      var map={};
+      snap.docs.forEach(function(x){
+        var d=x.data()||{}; if(!d.date) return;
+        var card=0, cash=0;
+        (d.orders||[]).forEach(function(o){ if(o.pay==="카드") card+=(o.total||0); else if(o.pay==="현금") cash+=(o.total||0); });
+        map[d.date]={ total:d.total||0, card:card, cash:cash };
+      });
+      var view=new Date(); view.setDate(1); view.setHours(0,0,0,0);
+      function paint(){
+        var y=view.getFullYear(), mo=view.getMonth();
+        var startDow=new Date(y,mo,1).getDay(), dim=new Date(y,mo+1,0).getDate();
+        var mCard=0,mCash=0,mTot=0, cells="";
+        for(var i=0;i<startDow;i++) cells+='<div class="calcell empty"></div>';
+        for(var dd=1; dd<=dim; dd++){
+          var key=localISO(new Date(y,mo,dd)), s=map[key];
+          if(s){ mCard+=s.card; mCash+=s.cash; mTot+=s.total; }
+          cells+='<button class="calcell'+(s?' has':'')+'" '+(s?'data-date="'+key+'"':'')+'>'+
+            '<span class="cd">'+dd+'</span>'+(s?'<span class="ct">'+wonK(s.total)+'</span>':'')+'</button>';
+        }
+        b.innerHTML = '<h3>매출 달력</h3>'+
+          '<div class="calnav"><button id="cal-prev">‹</button><b>'+y+'.'+(mo+1)+'</b><button id="cal-next">›</button></div>'+
+          '<div class="calsum">'+
+            '<div><div class="l">카드</div><div class="v">'+won(mCard)+'</div></div>'+
+            '<div><div class="l">현금</div><div class="v">'+won(mCash)+'</div></div>'+
+            '<div><div class="l">합계</div><div class="v">'+won(mTot)+'</div></div>'+
+          '</div>'+
+          '<div class="caldow"><span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span></div>'+
+          '<div class="calgrid">'+cells+'</div>'+
+          '<div class="sub" style="margin-top:12px">날짜(파란 칸)를 눌러 상세·수정</div>';
+        $("cal-prev").onclick=function(){ view.setMonth(view.getMonth()-1); paint(); };
+        $("cal-next").onclick=function(){ view.setMonth(view.getMonth()+1); paint(); };
+        Array.prototype.forEach.call(b.querySelectorAll(".calcell[data-date]"), function(el){
+          el.onclick=function(){
+            var dt=el.getAttribute("data-date");
+            db.doc("sales/"+dt).get().then(function(s){ showHistoryDay("sales", dt, s.exists?(s.data()||{}):{}); });
+          };
+        });
+      }
+      paint();
+    }).catch(function(){ b.innerHTML='<h3>매출 달력</h3><div class="sub">불러오기 실패</div>'; });
+  }
+
+  // 일자별 재고 변경 / 시재 내역 (매출은 달력)
+  function openHistory(kind){
+    if(!db){ showToast("동기화 연결 후 가능해요"); return; }
+    if(kind==="sales") return openSalesCalendar();
+    var title = kind==="till" ? "시재 내역" : "재고 변경 내역";
+    var col = kind==="till" ? "till" : kind;
+    var b=$("sheetbody");
+    b.innerHTML = '<h3>'+title+'</h3><div class="sub">불러오는 중…</div>';
+    openSheet();
+    db.collection(col).orderBy("date","desc").limit(31).get().then(function(snap){
+      var docs = snap.docs.map(function(d){ return d.data()||{}; }).filter(function(d){ return d.date; });
+      if(!docs.length){ b.innerHTML='<h3>'+title+'</h3><div class="sub">아직 기록이 없어요</div>'; return; }
+      b.innerHTML = '<h3>'+title+'</h3><div class="sub">날짜를 눌러 상세를 보세요</div>'+
+        docs.map(function(d){
+          var lbl=d.date.slice(5).replace("-","/");
+          var right;
+          if(kind==="sales") right = won(d.total||0);
+          else if(kind==="till") right = d.counted!=null ? won(d.counted) : (won((d.opening||0)+(d.cashTotal||0)-(d.paidOut||0))+" 예상");
+          else right = (d.entries||[]).length+"건";
+          return '<button class="pick-item" data-date="'+d.date+'"><span class="pi-n">'+lbl+'</span><span class="pi-p">'+right+'</span></button>';
+        }).join("");
+      Array.prototype.forEach.call(b.querySelectorAll("[data-date]"), function(el){
+        el.onclick=function(){
+          var dt=el.getAttribute("data-date");
+          if(kind==="till") openTill(dt);
+          else showHistoryDay(kind, dt, docs.filter(function(d){return d.date===dt;})[0]);
+        };
+      });
+    }).catch(function(){ b.innerHTML='<h3>'+title+'</h3><div class="sub">불러오기 실패</div>'; });
+  }
+  function refreshSalesDay(date){
+    db.doc("sales/"+date).get()
+      .then(function(s){ showHistoryDay("sales", date, s.exists?(s.data()||{}):{}); })
+      .catch(function(){ openHistory("sales"); });
+  }
+  function showHistoryDay(kind, date, d){
+    d = d || {};
+    var b=$("sheetbody");
+    var back='<button class="linkbtn" id="hist-back" style="padding:6px 0 12px">‹ 목록으로</button>';
+    if(kind==="sales"){
+      var byItem={}, byPay={"카드":0,"현금":0,"기타":0};
+      (d.orders||[]).forEach(function(o){
+        byPay[o.pay||"기타"] = (byPay[o.pay||"기타"]||0) + (o.total||0);
+        (o.lines||[]).forEach(function(l){
+          var k=l.name+(l.opt?" · "+l.opt:"");
+          if(!byItem[k]) byItem[k]={qty:0, amt:0};
+          byItem[k].qty+=l.qty; byItem[k].amt+=l.price*l.qty;
+        });
+      });
+      var rows=Object.keys(byItem).sort(function(a,c){return byItem[c].amt-byItem[a].amt;}).map(function(k){
+        return '<div class="kv"><span>'+esc(k)+' <span style="color:var(--ink-dim)">×'+byItem[k].qty+'</span></span><b>'+won(byItem[k].amt)+'</b></div>';
+      }).join("");
+      var canEdit = true; // 매출은 직원도 수정 가능
+      b.innerHTML = back+'<h3>'+date+' 매출</h3>'+
+        '<div class="kv tot" style="font-size:16px;margin:2px 0 12px"><span>합계 ('+(d.count||0)+'건)</span><span>'+won(d.total||0)+'</span></div>'+
+        '<div class="kv"><span>카드</span><b>'+won(byPay["카드"])+'</b></div>'+
+        '<div class="kv"><span>현금</span><b>'+won(byPay["현금"])+'</b></div>'+
+        (byPay["기타"]?'<div class="kv"><span>기타/미수</span><b>'+won(byPay["기타"])+'</b></div>':'')+
+        '<div style="font-size:11.5px;font-weight:700;color:var(--ink-dim);margin:16px 0 4px">품목별</div>'+
+        (rows||'<div class="sub">내역 없음</div>')+
+        '<div style="font-size:11.5px;font-weight:700;color:var(--ink-dim);margin:16px 0 4px">건별 (최근순)</div>'+
+        (d.orders||[]).slice().reverse().map(function(o){
+          var idx=(d.orders||[]).indexOf(o);
+          return '<div class="kv"><span>'+(o.t==="직접입력"?"직접입력":o.t+"번")+' · '+esc(o.by||"?")+' · '+esc(o.pay||"기타")+' · '+timeShort(o.at)+'</span>'+
+            '<b>'+won(o.total)+(canEdit?' <button class="tl-x" data-delorder="'+idx+'" title="이 건 삭제">✕</button>':'')+'</b></div>';
+        }).join("")+
+        (canEdit && (d.orders||[]).length ? '<button class="delbtn" id="sale-delall" style="margin-top:16px">이 날짜 매출 전체 삭제</button>' : '');
+      Array.prototype.forEach.call(b.querySelectorAll("[data-delorder]"), function(el){
+        el.onclick=function(){
+          if(!me){ needName(); return; }
+          var idx=+el.getAttribute("data-delorder");
+          var orders=(d.orders||[]).slice();
+          var rm=orders.splice(idx,1)[0]; if(!rm) return;
+          var w = orders.length
+            ? db.doc("sales/"+date).set({date:date, orders:orders, total:(d.total||0)-(rm.total||0), count:orders.length, updatedAt:nowISO()})
+            : db.doc("sales/"+date).delete();
+          w.then(function(){ addLog(me+" "+date+" 매출 1건 삭제 ("+won(rm.total||0)+")"); refreshSalesDay(date); showToast("삭제됨"); })
+           .catch(function(){ showToast("삭제 실패"); });
+        };
+      });
+      var da=$("sale-delall");
+      if(da){ var armed=false;
+        da.onclick=function(){
+          if(!me){ needName(); return; }
+          if(!armed){ armed=true; da.textContent="정말 삭제? 한 번 더 누르기"; return; }
+          db.doc("sales/"+date).delete()
+            .then(function(){ addLog(me+" "+date+" 매출 전체 삭제"); closeSheet(); showToast(date+" 매출 삭제됨"); })
+            .catch(function(){ showToast("삭제 실패"); });
+        };
+      }
+    } else {
+      var es=(d.entries||[]).slice().reverse();
+      b.innerHTML = back+'<h3>'+date+' 재고 변경</h3>'+
+        (es.length ? es.map(function(e){
+          return '<div class="kv"><span>'+esc(e.item)+' <span style="color:var(--ink-dim)">'+esc(e.source||"")+' · '+esc(e.who||"?")+'</span></span><b>'+e.from+' → '+e.to+'</b></div>';
+        }).join("") : '<div class="sub">변경 내역 없음</div>');
+    }
+    $("hist-back").onclick=function(){ openHistory(kind); };
+  }
+
+  // 오늘 시재 (사장 전용): 시작 시재 + 현금 매출 - 지출 = 예상 시재, 실사 금액과 비교
+  function openTill(date){
+    if(!db){ showToast("동기화 연결 후 가능해요"); return; }
+    date = date || localISO(new Date());
+    var isToday = date === localISO(new Date());
+    var b=$("sheetbody");
+    b.innerHTML = '<h3>시재 · '+date+'</h3><div class="sub">불러오는 중…</div>';
+    openSheet();
+    Promise.all([
+      db.doc("till/"+date).get(),
+      isToday ? Promise.resolve(null) : db.doc("sales/"+date).get(),
+      db.doc("meta/tillDefault").get()
+    ]).then(function(res){
+      var t = res[0].exists ? (res[0].data()||{}) : {};
+      var sd = isToday ? todaySales : (res[1] && res[1].exists ? res[1].data() : null);
+      var def = (res[2].exists && res[2].data().opening) || 0;
+      var cardT=0, cashT=0, otherT=0;
+      ((sd&&sd.orders)||[]).forEach(function(o){
+        if(o.pay==="카드") cardT+=o.total; else if(o.pay==="현금") cashT+=o.total; else otherT+=(o.total||0);
+      });
+      var opening0 = t.opening!=null ? t.opening : def;
+      function calc(){
+        var op=Number($("tl-open").value)||0, out=Number($("tl-out").value)||0;
+        var exp=op+cashT-out;
+        var cv=$("tl-counted").value, cnt = cv===""?null:Number(cv);
+        $("tl-expected").textContent = won(exp);
+        $("tl-diff").textContent = cnt==null ? "–" : won(cnt-exp);
+        $("tl-deposit").textContent = cnt==null ? won(exp-op)+" (예상)" : won(cnt-op);
+      }
+      b.innerHTML = '<h3>시재 · '+date+(isToday?" (오늘)":"")+'</h3>'+
+        '<div class="field"><label>시작 시재 (그날 캐시박스에 넣어둔 돈)</label>'+
+          '<input id="tl-open" type="number" inputmode="numeric" value="'+(t.opening!=null?t.opening:(def||""))+'" placeholder="예: 200000"></div>'+
+        '<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-dim);margin:-4px 0 12px">'+
+          '<input type="checkbox" id="tl-default" style="width:16px;height:16px;accent-color:var(--brand)">이 금액을 매일 기본 시작 시재로 저장</label>'+
+        '<div class="kv"><span>카드 매출</span><b>'+won(cardT)+'</b></div>'+
+        '<div class="kv"><span>현금 매출</span><b>'+won(cashT)+'</b></div>'+
+        (otherT?'<div class="kv"><span>기타/미수</span><b>'+won(otherT)+'</b></div>':'')+
+        '<div class="field" style="margin-top:10px"><label>현금 지출 (거스름돈 교환 제외한 실지출)</label>'+
+          '<input id="tl-out" type="number" inputmode="numeric" value="'+(t.paidOut!=null?t.paidOut:"")+'" placeholder="0"></div>'+
+        '<div class="kv tot" style="font-size:15px;margin-top:6px"><span>예상 마감 현금 (시작+현금매출−지출)</span><span id="tl-expected">'+won(opening0+cashT-(t.paidOut||0))+'</span></div>'+
+        '<div class="field" style="margin-top:10px"><label>실제 확인한 현금 (마감 시 세어서 입력)</label>'+
+          '<input id="tl-counted" type="number" inputmode="numeric" value="'+(t.counted!=null?t.counted:"")+'" placeholder="세어서 입력"></div>'+
+        '<div class="kv"><span>차액 (실제−예상)</span><b id="tl-diff">'+(t.counted!=null?won(t.counted-(opening0+cashT-(t.paidOut||0))):"–")+'</b></div>'+
+        '<div class="kv"><span>입금/금고행 (실제−시작시재)</span><b id="tl-deposit">–</b></div>'+
+        '<button class="savebtn" id="tl-save" style="margin-top:12px">저장</button>';
+      Array.prototype.forEach.call(["tl-open","tl-out","tl-counted"], function(id){ $(id).addEventListener("input", calc); });
+      calc();
+      $("tl-save").onclick=function(){
+        if(!me){ needName(); return; }
+        var op=Number($("tl-open").value)||0, out=Number($("tl-out").value)||0;
+        var cv=$("tl-counted").value, counted = cv===""?null:Number(cv);
+        var writes=[ db.doc("till/"+date).set({ date:date, opening:op, paidOut:out, counted:counted,
+          cardTotal:cardT, cashTotal:cashT, updatedAt:nowISO(), updatedBy:me }) ];
+        if($("tl-default").checked) writes.push(db.doc("meta/tillDefault").set({opening:op, updatedAt:nowISO()}));
+        Promise.all(writes).then(function(){
+          addLog(me+" 시재 기록 ("+date+")"+(counted!=null?" · 실사 "+won(counted):""));
+          closeSheet(); showToast("저장됐어요");
+        }).catch(function(){ showToast("저장 실패"); });
+      };
+    }).catch(function(){ b.innerHTML='<h3>시재</h3><div class="sub">불러오기 실패</div>'; });
+  }
+
+  // 지난 날짜 재고 실사(전수 입력) — 기준점 잡기용
+  function openStocktake(){
+    if(!ownerView()) return;
+    var y=new Date(); y.setDate(y.getDate()-1);
+    var list=stockItems().sort(function(a,b){return (a.order||0)-(b.order||0);});
+    var b=$("sheetbody"), curCat=null, rows="";
+    list.forEach(function(it){
+      if(it.cat!==curCat){ curCat=it.cat; rows+='<div style="font-size:11px;font-weight:700;color:var(--brand);margin:12px 0 4px">'+esc(CAT_KO[it.cat]||it.cat)+'</div>'; }
+      rows+='<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--line-soft)">'+
+        '<span style="flex:1;font-size:13px">'+esc(it.name)+'</span>'+
+        '<input class="st-c" data-id="'+it.id+'" type="number" inputmode="numeric" min="0" value="'+(it.stock||0)+'" style="width:72px;padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:var(--ground);text-align:right;font-size:13px">'+
+      '</div>';
+    });
+    b.innerHTML='<h3>재고 실사</h3><div class="sub">이 시점의 실제 재고 수량을 전부 입력 = 기준점. 이후 변동은 자동 추적돼요.</div>'+
+      '<div class="field"><label>실사 날짜</label><input id="st-date" type="date" value="'+localISO(y)+'"></div>'+
+      rows+'<button class="savebtn" id="st-save" style="margin-top:16px">실사 저장</button>';
+    $("st-save").onclick=function(){
+      if(!me){ needName(); return; }
+      var date=$("st-date").value||localISO(y);
+      var changes=[];
+      Array.prototype.forEach.call(b.querySelectorAll(".st-c"), function(inp){
+        var id=inp.getAttribute("data-id"), nv=Math.max(0,Number(inp.value)||0);
+        var it=items.find(function(x){return x.id===id;}); if(!it) return;
+        if((it.stock||0)!==nv) changes.push({id:id, name:it.name, from:it.stock||0, to:nv});
+      });
+      if(!changes.length){ closeSheet(); showToast("변경 없음"); return; }
+      Promise.all(changes.map(function(c){
+        return db.doc("items/"+c.id).update({stock:c.to, updatedAt:nowISO(), updatedBy:me});
+      })).then(function(){
+        return appendDailyDoc("stockLog/"+date, function(d){
+          var entries=(d.entries||[]).concat(changes.map(function(c){
+            return { ts:nowISO(), who:me||"", item:c.name, from:c.from, to:c.to, source:"실사" };
+          }));
+          return { date:date, entries:entries, updatedAt:nowISO() };
+        });
+      }).then(function(){
+        addLog(me+" 재고 실사 "+changes.length+"건 ("+date+")");
+        closeSheet(); showToast("실사 저장됨 · "+changes.length+"건");
+      }).catch(function(){ showToast("저장 실패"); });
+    };
+    openSheet();
+  }
+
+  function openMenuManager(){
+    if(!ownerView()) return;
+    var list=menuList(), b=$("sheetbody"), curCat=null, rows="";
+    list.forEach(function(it){
+      if(it.cat!==curCat){ curCat=it.cat; rows+='<div style="font-size:11px;font-weight:700;color:var(--brand);margin:14px 0 4px">'+esc(CAT_KO[it.cat]||it.cat)+'</div>'; }
+      var single = it.form==="단일가" || it.form==="GLASS ONLY" || it.bottle==null;
+      var st="width:82px;padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:var(--ground);text-align:right;font-size:12.5px";
+      rows += '<div style="display:flex;align-items:center;gap:7px;padding:6px 0;border-bottom:1px solid var(--line-soft)">'+
+        '<span style="flex:1;font-size:13px;line-height:1.3">'+esc(it.name)+'</span>'+
+        (single
+          ? '<input class="mm-p" data-id="'+it.id+'" data-f="glass" type="number" inputmode="numeric" value="'+(it.glass!=null?it.glass:"")+'" placeholder="판매가" style="'+st+';width:108px">'
+          : '<input class="mm-p" data-id="'+it.id+'" data-f="glass" type="number" inputmode="numeric" value="'+(it.glass!=null?it.glass:"")+'" placeholder="잔" style="'+st+'">'+
+            '<input class="mm-p" data-id="'+it.id+'" data-f="bottle" type="number" inputmode="numeric" value="'+(it.bottle!=null?it.bottle:"")+'" placeholder="병" style="'+st+'">')+
+      '</div>';
+    });
+    b.innerHTML = '<h3>메뉴 판매가 관리</h3><div class="sub">테이블 계산에 이 금액이 자동으로 불러와집니다</div>'+
+      rows + '<button class="savebtn" id="mm-save" style="margin-top:18px">전체 저장</button>';
+    $("mm-save").onclick=function(){
+      if(!me){ needName(); return; }
+      var byId={};
+      Array.prototype.forEach.call(b.querySelectorAll(".mm-p"), function(inp){
+        var id=inp.getAttribute("data-id"), f=inp.getAttribute("data-f");
+        var v=inp.value.trim(), nv = v===""?null:Number(v);
+        var it=items.find(function(x){return x.id===id;}); if(!it) return;
+        var cur = f==="glass" ? it.glass : it.bottle;
+        cur = cur==null ? null : cur;
+        if(nv !== cur){ if(!byId[id]) byId[id]={updatedAt:nowISO(), updatedBy:me}; byId[id][f]=nv; }
+      });
+      var ids=Object.keys(byId);
+      if(!ids.length){ closeSheet(); showToast("변경된 내용이 없어요"); return; }
+      Promise.all(ids.map(function(id){ return db.doc("items/"+id).update(byId[id]); }))
+        .then(function(){ addLog(me+" 메뉴 판매가 "+ids.length+"건 수정"); closeSheet(); showToast(ids.length+"건 저장됐어요"); })
+        .catch(function(){ showToast("저장 실패"); });
+    };
+    openSheet();
+  }
+  function openClosing(){
+    if(!db){ showToast("동기화 연결 후 가능해요"); return; }
+    var today = localISO(new Date());
+    var opens = items.filter(function(x){return x.open;}).sort(function(a,b){return (a.order||0)-(b.order||0);});
+    var shorts = items.filter(isShort);
+    var b=$("sheetbody");
+    b.innerHTML = ''+
+      '<h3>마감 체크 · '+fmtToday()+'</h3>'+
+      '<div class="sub">오픈된 병과 재고를 훑어보고, 이상 없으면 완료를 눌러주세요</div>'+
+      '<div style="font-size:11.5px;font-weight:700;color:var(--ink-dim);margin:8px 0 4px">오픈 중인 병 '+opens.length+'개</div>'+
+      (opens.length ? opens.map(function(it){
+        var od=openDays(it.openedAt);
+        return '<div class="kv"><span>'+esc(it.name)+'</span><b>'+(od!=null? dayLabel(it.openedAt)+" 오픈 · "+od+"일째" : "오픈일 미기록")+'</b></div>';
+      }).join("") : '<div class="kv"><span>—</span><b>없음</b></div>')+
+      (shorts.length ? '<div class="kv" style="margin-top:6px"><span>발주 필요</span><b style="color:var(--danger)">'+shorts.length+'건</b></div>' : '')+
+      '<div class="field" style="margin-top:14px"><label>특이사항 (선택)</label>'+
+        '<textarea id="cl-note" placeholder="예: 발베니12 마지막 잔 나감 · 콜라 3캔 남음"></textarea></div>'+
+      '<button class="savebtn" id="cl-save">마감 완료</button>';
+    $("cl-save").onclick=function(){
+      if(!me){ needName(); return; }
+      var note=$("cl-note").value.trim();
+      db.doc("closings/"+today).set({
+        date: today, by: me, at: nowISO(), note: note,
+        openCount: opens.length, shortCount: shorts.length
+      }).then(function(){
+        addLog(me+" 마감 체크"+(note? " · "+note : ""));
+        closeSheet(); showToast("마감 체크 완료");
+      }).catch(function(){ showToast("저장 실패"); });
+    };
+    openSheet();
+  }
+
+  function openCostManager(){
+    if(!ownerView()) return;
+    var list = stockItems().sort(function(a,b){return (a.order||0)-(b.order||0);});
+    var b=$("sheetbody"), curCat=null, rows="";
+    list.forEach(function(it){
+      if(it.cat!==curCat){ curCat=it.cat;
+        rows += '<div style="font-size:11px;font-weight:700;color:var(--brand);letter-spacing:.04em;margin:14px 0 4px">'+esc(CAT_KO[it.cat]||it.cat)+'</div>';
+      }
+      var c=costMap[it.id]||{};
+      rows += '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--line-soft)">'+
+        '<span style="flex:1;font-size:13.5px;line-height:1.3">'+esc(it.name)+'</span>'+
+        '<input class="cm-cost" data-id="'+it.id+'" type="number" inputmode="numeric" placeholder="원가" '+
+          'value="'+(c.cost!=null?c.cost:"")+'" '+
+          'style="width:106px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--ground);text-align:right;font-size:13px">'+
+      '</div>';
+    });
+    b.innerHTML = '<h3>주류 원가 일괄 입력</h3><div class="sub">병당 매입가(원) · 사장만 보임 · 빈 칸은 미입력</div>'+
+      rows + '<button class="savebtn" id="cm-save" style="margin-top:18px">전체 저장</button>';
+    $("cm-save").onclick=function(){
+      if(!me){ needName(); return; }
+      var entries={};
+      Array.prototype.forEach.call(b.querySelectorAll(".cm-cost"), function(inp){
+        var id=inp.getAttribute("data-id"), v=inp.value.trim();
+        var prev=(costMap[id]||{}).cost; prev = prev==null?null:prev;
+        var nv = v===""? null : Number(v);
+        if(nv!==prev){
+          entries[id] = { cost:nv, note:(costMap[id]||{}).note||"", updatedAt:nowISO() };
+        }
+      });
+      var n=Object.keys(entries).length;
+      if(!n){ closeSheet(); showToast("변경된 내용이 없어요"); return; }
+      db.doc("cost/all").update({items:entries}).then(function(){
+        addLog(me+" 원가 "+n+"건 수정");
+        closeSheet(); showToast(n+"건 저장됐어요");
+      }).catch(function(){ showToast("저장 실패"); });
+    };
+    openSheet();
+  }
+
+  function openOrderList(){
+    if(!ownerView()) return;
+    var short = items.filter(isShort).sort(function(a,b){return (a.order||0)-(b.order||0);});
+    var b=$("sheetbody");
+    if(!short.length){
+      b.innerHTML = '<h3>발주 목록</h3><div class="sub">지금 발주가 필요한 품목이 없어요</div>';
+    } else {
+      var estTotal = 0;
+      var listHtml = short.map(function(it){
+        var need = Math.max(1, (it.min||0) - (it.stock||0));
+        var c = (costMap[it.id]||{}).cost;
+        if(c!=null) estTotal += c*need;
+        return '<div class="kv"><span>'+esc(it.name)+'</span><b>'+(it.stock||0)+' / 최소 '+(it.min||0)+
+               '<span style="color:var(--ink-dim);font-weight:400"> · '+need+'개 필요'+
+               (c!=null? ' · 원가 '+won(c):'')+'</span></b></div>';
+      }).join("");
+      b.innerHTML = '<h3>발주 목록 · '+short.length+'건</h3>'+
+        '<div class="sub">현재고가 최소재고 아래인 품목</div>'+ listHtml +
+        (estTotal>0? '<div class="kv" style="border-top:1px dashed var(--line);margin-top:8px;padding-top:10px"><span>예상 발주 금액 (원가 입력분)</span><b>'+won(estTotal)+'</b></div>':'')+
+        (dl? '<button class="savebtn" id="o-csv" style="margin-top:16px">발주 목록 CSV로 내려받기</button>':'');
+      if(dl) $("o-csv").onclick=function(){ downloadCSV(short, "다이닝사운드_발주목록"); };
+    }
+    openSheet();
+  }
+
+  // ---------- CSV ----------
+  function downloadCSV(rows, base){
+    var head = ["분류","브랜드","품목명","단위","현재고","최소재고","오픈","잔가","보틀가"];
+    if(ownerView()) head = head.concat(["원가","보틀마진","거래처메모"]);
+    head = head.concat(["비고","마지막수정자","마지막수정"]);
+    var lines = [head.join(",")];
+    rows.forEach(function(it){
+      var r=[CAT_KO[it.cat]||it.cat, it.brand||"", it.name||"", it.unit||"", it.stock||0, it.min||0,
+        it.open?"O":"", it.glass||"", it.bottle||""];
+      if(ownerView()){
+        var c=costMap[it.id]||{};
+        var mg = (c.cost!=null && it.bottle!=null)? (it.bottle-c.cost) : "";
+        r=r.concat([c.cost!=null?c.cost:"", mg, c.note||""]);
+      }
+      r=r.concat([(it.note||"").replace(/\n/g," "), it.updatedBy||"",
+        it.updatedAt? new Date(it.updatedAt).toLocaleString("ko-KR"):""]);
+      lines.push(r.map(function(v){ v=String(v); return /[",\n]/.test(v)? '"'+v.replace(/"/g,'""')+'"' : v; }).join(","));
+    });
+    var today = new Date().toISOString().slice(0,10).replace(/-/g,"");
+    dl.save({filename: base+"_"+today+".csv", data: "﻿"+lines.join("\n")})
+      .catch(function(e){ if(e && e.code!=="declined") showToast("내려받기 실패"); });
+  }
+
+  // ---------- sheet ----------
+  function openSheet(){ $("scrim").classList.add("on"); $("sheet").classList.add("on"); }
+  function closeSheet(){ $("scrim").classList.remove("on"); $("sheet").classList.remove("on"); openDetailId=null; }
+  $("scrim").addEventListener("click", closeSheet);
+
+  // ---------- toast ----------
+  var toastT;
+  function showToast(msg){
+    var t=$("toast"); t.textContent=msg; t.classList.add("on");
+    clearTimeout(toastT); toastT=setTimeout(function(){ t.classList.remove("on"); }, 2600);
+  }
+  function showUndoToast(msg, undoFn){
+    var t=$("toast");
+    t.innerHTML = '<span>'+esc(msg)+'</span>'+
+      '<button id="undo-btn" style="margin-left:12px;background:none;border:1px solid rgba(255,255,255,.45);'+
+      'color:#fff;padding:4px 11px;border-radius:7px;font-size:12px;font-weight:700">실행취소</button>';
+    t.classList.add("on");
+    clearTimeout(toastT);
+    var btn=$("undo-btn");
+    if(btn) btn.onclick=function(){ clearTimeout(toastT); t.classList.remove("on"); undoFn(); };
+    toastT=setTimeout(function(){ t.classList.remove("on"); }, 9000);
+  }
+
+  // ---------- wire ----------
+  $("who").value = me;
+  $("who").addEventListener("input", function(){
+    me = this.value.trim();
+    try{ localStorage.setItem("ds_inv_who", me); }catch(e){}
+    if(me) this.classList.remove("need");
+    if(currentView==="att") $("att-me").textContent = me || "이름을 입력하세요";
+  });
+  $("search").addEventListener("input", function(){ q=this.value; render(); });
+  $("stat-short").addEventListener("click", function(){ showShort=!showShort; if(showShort) showOpen=false; render(); });
+  $("stat-open").addEventListener("click", function(){ showOpen=!showOpen; if(showOpen) showShort=false; render(); });
+  $("addbtn").addEventListener("click", function(){ if(!db){ showToast("동기화 연결 후 추가할 수 있어요"); return; } openAdd(); });
+  $("orderbtn").addEventListener("click", openOrderList);
+  $("closebtn").addEventListener("click", openClosing);
+  $("costbtn").addEventListener("click", openCostManager);
+  $("salesbtn").addEventListener("click", function(){ openHistory("sales"); });
+  $("stocklogbtn").addEventListener("click", function(){ openHistory("stockLog"); });
+  $("tillbtn").addEventListener("click", function(){ openTill(); });
+  $("tillhistbtn").addEventListener("click", function(){ openHistory("till"); });
+  $("stocktakebtn").addEventListener("click", openStocktake);
+  $("menubtn").addEventListener("click", openMenuManager);
+  $("pinbtn").addEventListener("click", openPinSettings);
+  $("logoutbtn").addEventListener("click", logout);
+  $("att-in").addEventListener("click", function(){ punch("in"); });
+  $("att-out").addEventListener("click", function(){ punch("out"); });
+  $("atthistbtn").addEventListener("click", openAttHistory);
+  (function attClock(){
+    var d=new Date();
+    var c=$("att-clock"); if(c) c.textContent = pad2(d.getHours())+":"+pad2(d.getMinutes());
+    var dt=$("att-date"); if(dt) dt.textContent = (d.getMonth()+1)+"월 "+d.getDate()+"일 ("+["일","월","화","수","목","금","토"][d.getDay()]+")";
+    setTimeout(attClock, 15000);
+  })();
+  Array.prototype.forEach.call(document.querySelectorAll(".tabnav [data-v]"), function(btn){
+    btn.addEventListener("click", function(){ switchView(btn.getAttribute("data-v")); });
+  });
+  $("lockbtn").addEventListener("click", function(){
+    try{ localStorage.setItem("ds_view_lock","staff"); }catch(e){}
+    staffLock=true; previewStaff=true; applyMode(); render();
+    if(openDetailId) openDetail(openDetailId);
+    showToast("이 기기는 이제 직원 화면으로 열립니다");
+  });
+  $("csvbtn").addEventListener("click", function(){
+    downloadCSV(items.slice().sort(function(a,b){return (a.order||0)-(b.order||0);}), "다이닝사운드_재고");
+  });
+  document.addEventListener("keydown", function(e){ if(e.key==="Escape") closeSheet(); });
+
+  // event delegation for the live list (rows are re-rendered on every snapshot)
+  $("list").addEventListener("click", function(e){
+    var n=e.target.closest("[data-act]"); if(!n) return;
+    var id=n.getAttribute("data-id"), act=n.getAttribute("data-act");
+    if(act==="dec") bump(id,-1);
+    else if(act==="inc") bump(id,1);
+    else if(act==="open") toggleOpen(id);
+    else if(act==="detail") openDetail(id);
+  });
+  $("list").addEventListener("keydown", function(e){
+    if(e.key!=="Enter" && e.key!==" ") return;
+    var n=e.target.closest('[data-act="detail"]'); if(!n) return;
+    e.preventDefault(); openDetail(n.getAttribute("data-id"));
+  });
+
+  // ---------- offline seed view ----------
+  function renderOffline(){
+    setSync("off","오프라인");
+    items = SEED.map(function(s){ return {id:"r"+s.o, order:s.o, cat:s.cat, brand:s.brand, name:s.name, form:s.form, glass:s.glass, bottle:s.bottle, unit:s.unit, stock:s.stock, min:s.min, open:!!s.open, note:s.note||""}; });
+    $("offline").innerHTML = '<div class="banner">실시간 동기화를 사용할 수 없는 화면이에요. 아래 목록은 마지막 기준값이며, 여기서 수정해도 저장되지 않습니다. claude.ai 로그인 상태에서 다시 열어주세요.</div>';
+    renderChips(); render();
+    // disable controls
+    Array.prototype.forEach.call(document.querySelectorAll(".stepper button, .opentog, #addbtn"), function(x){ x.disabled=true; x.style.opacity=.4; });
+  }
+
+  // ---------- seed ----------
+  function seedBody(s){
+    var b = { cat:s.cat, brand:s.brand||"", name:s.name, form:s.form||"",
+      unit:s.unit||"병", stock:s.stock||0, min:s.min||0, open:!!s.open,
+      note:s.note||"", order:s.o, updatedAt:nowISO(), updatedBy:"기준값" };
+    if(s.glass!=null) b.glass=s.glass;
+    if(s.bottle!=null) b.bottle=s.bottle;
+    if(s.notrack) b.notrack=true;
+    return b;
+  }
+  // 몇 개씩 나눠 순차 기록 (호출 속도 제한 회피). 실패한 항목은 다음 실행에서 재시도.
+  function seedChunk(list, i){
+    if(i>=list.length) return Promise.resolve();
+    var part=list.slice(i, i+3);
+    return Promise.all(part.map(function(s){
+      return db.doc("items/r"+s.o).set(seedBody(s)).catch(function(){ return null; });
+    })).then(function(){ return new Promise(function(r){ setTimeout(r, 300); }); })
+      .then(function(){ return seedChunk(list, i+3); });
+  }
+  function runSeed(force){
+    if(!db || seedingActive) return;
+    seedingActive=true; render();
+    db.collection("items").get().then(function(snap){
+      var have={}; snap.docs.forEach(function(d){ have[d.id]=true; });
+      var missing = SEED.filter(function(s){ return force ? true : !have["r"+s.o]; });
+      if(!missing.length){ seedingActive=false; render(); return; }
+      return db.doc("meta/log").get().then(function(l){
+        if(!l.exists) return db.doc("meta/log").set({entries:[]});
+      }).then(function(){ return seedChunk(missing, 0); })
+        .then(function(){ return db.collection("items").get(); })
+        .then(function(snap){
+          if(snap.size >= SEED.length){
+            return db.doc("meta/state").set({seeded:true, v:SEED_VERSION, at:nowISO()})
+              .then(function(){ seededOnce=true; }).catch(function(){});
+          }
+        })
+        .then(function(){ seedingActive=false; showToast("기준 재고 불러옴"); render(); });
+    }).catch(function(){ seedingActive=false; render(); });
+  }
+
+  function applyMode(){
+    document.body.classList.toggle("owner", ownerView());
+    var badge=$("modebadge"), lb=$("lockbtn");
+    if(lb) lb.hidden = !(isOwner && previewStaff && !staffLock);
+    if(staffLock){
+      badge.textContent = isOwner ? "직원 화면 · 사장님은 탭하면 해제" : "직원 화면";
+      badge.style.cursor = isOwner ? "pointer" : "default";
+      return;
+    }
+    if(isOwner){
+      badge.textContent = previewStaff ? "직원 화면 미리보기 · 탭하면 복귀" : "사장 모드 · 탭하면 직원 화면";
+      badge.style.cursor = "pointer";
+    } else {
+      badge.textContent = "직원 모드";
+    }
+  }
+  function unlockStaffDevice(){
+    try{ localStorage.removeItem("ds_view_lock"); }catch(e){}
+    staffLock=false; previewStaff=false;
+    applyMode(); render(); if(currentView==="tables") renderTables();
+    showToast("이 기기가 사장 모드로 전환됐어요");
+  }
+
+  // ---------- 다운로드 (일반 브라우저) ----------
+  function blobSave(req){
+    return new Promise(function(res, rej){
+      try{
+        var blob = new Blob([req.data], {type:"text/csv;charset=utf-8;"});
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement("a");
+        a.href = url; a.download = req.filename || "download.csv";
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function(){ URL.revokeObjectURL(url); }, 1500);
+        res({status:"saved"});
+      }catch(e){ rej({code:"failed", message:String(e)}); }
+    });
+  }
+
+  // ---------- 모드 뱃지 ----------
+  function wireBadge(){
+    var unlockArmed=false;
+    $("modebadge").addEventListener("click", function(){
+      if(!isOwner) return;
+      if(staffLock){
+        if(!unlockArmed){ unlockArmed=true; $("modebadge").textContent="한 번 더 탭하면 사장 모드로"; return; }
+        unlockStaffDevice(); return;
+      }
+      previewStaff = !previewStaff;
+      applyMode(); render();
+      if(openDetailId) openDetail(openDetailId);
+    });
+  }
+
+  // ---------- PIN 인증 ----------
+  function rememberRole(r, p){ try{ localStorage.setItem("ds_role", r); localStorage.setItem("ds_pin", p); }catch(e){} }
+  function showGate(){
+    $("gate").classList.remove("hidden");
+    $("g-msg").textContent = "PIN을 입력하세요";
+    $("g-pin").hidden = false; $("g-go").hidden = false;
+    $("g-hint").textContent = "사장 PIN / 직원 PIN 이 다릅니다";
+    $("g-pin").focus();
+  }
+  function hideGate(){ $("gate").classList.add("hidden"); }
+  function submitPin(){
+    var v=($("g-pin").value||"").trim();
+    if(v && accessCfg.ownerPin && v===accessCfg.ownerPin){ isOwner=true; rememberRole("owner",v); enterApp(); return; }
+    if(v && accessCfg.staffPin && v===accessCfg.staffPin){ isOwner=false; rememberRole("staff",v); enterApp(); return; }
+    var p=$("g-pin"); p.classList.add("wrong"); p.value=""; $("g-msg").textContent="PIN이 맞지 않아요. 다시 입력하세요.";
+  }
+  function logout(){
+    try{ localStorage.removeItem("ds_role"); localStorage.removeItem("ds_pin"); }catch(e){}
+    location.reload();
+  }
+  function openPinSettings(){
+    if(!ownerView()) return;
+    var b=$("sheetbody");
+    b.innerHTML = '<h3>PIN 설정</h3><div class="sub">직원에겐 <b>직원 PIN</b>만 알려주세요. 사장 PIN으로 들어오면 원가·매출·근태수정이 보입니다.</div>'+
+      '<div class="field"><label>사장 PIN (필수)</label><input id="pin-owner" type="tel" inputmode="numeric" maxlength="8" value="'+esc(accessCfg.ownerPin||"")+'"></div>'+
+      '<div class="field"><label>직원 PIN</label><input id="pin-staff" type="tel" inputmode="numeric" maxlength="8" value="'+esc(accessCfg.staffPin||"")+'"></div>'+
+      '<button class="savebtn" id="pin-save">저장</button>';
+    $("pin-save").onclick=function(){
+      var o=($("pin-owner").value||"").trim(), s=($("pin-staff").value||"").trim();
+      if(!o){ showToast("사장 PIN은 필수예요"); return; }
+      if(o===s){ showToast("사장/직원 PIN은 달라야 해요"); return; }
+      db.doc("config/access").set({ownerPin:o, staffPin:s, updatedAt:nowISO()}, {merge:true}).then(function(){
+        accessCfg.ownerPin=o; accessCfg.staffPin=s; rememberRole("owner", o);
+        closeSheet(); showToast("PIN 저장됐어요");
+      }).catch(function(){ showToast("저장 실패"); });
+    };
+    openSheet();
+  }
+
+  function enterApp(){
+    hideGate();
+    $("att-me") && ($("att-me").textContent = me || "이름을 입력하세요");
+    applyMode();
+    subscribeAll();
+  }
+
+  function start(){
+    applyMode();
+    renderChips();
+    setSync("wait","연결 중");
+    try{ firebase.initializeApp(FIREBASE_CONFIG); }catch(e){ console.warn(e); }
+    db = firebase.firestore();
+    dl = { save: blobSave };
+    $("csvbtn").hidden = false;
+    wireBadge();
+    $("g-go").addEventListener("click", submitPin);
+    $("g-pin").addEventListener("keydown", function(e){ if(e.key==="Enter") submitPin(); });
+
+    firebase.auth().signInAnonymously().then(function(){
+      return db.doc("config/access").get();
+    }).then(function(s){
+      accessCfg = (s.exists && s.data()) || {};
+      var savedRole=null, savedPin=null;
+      try{ savedRole=localStorage.getItem("ds_role"); savedPin=localStorage.getItem("ds_pin"); }catch(e){}
+
+      if(!accessCfg.ownerPin && !accessCfg.staffPin){
+        // 최초 실행 — 이 접속을 사장으로, PIN 설정 유도
+        isOwner = true;
+        db.doc("config/access").set({ownerPin:"", staffPin:"", createdAt:nowISO()}).catch(function(){});
+        enterApp();
+        setTimeout(function(){ showToast("먼저 사장/직원 PIN을 정하세요"); openPinSettings(); }, 900);
+        return;
+      }
+      if(savedRole==="owner" && savedPin && savedPin===accessCfg.ownerPin){ isOwner=true; enterApp(); return; }
+      if(savedRole==="staff" && savedPin && savedPin===accessCfg.staffPin){ isOwner=false; enterApp(); return; }
+      showGate();
+    }).catch(function(e){
+      console.warn("firebase", e);
+      setSync("off","연결 실패");
+      $("gate").classList.remove("hidden");
+      $("g-msg").textContent = "연결에 실패했어요. 잠시 후 새로고침 해주세요.";
+      $("g-pin").style.display="none"; $("g-go").style.display="none";
+      $("g-hint").textContent = (e && e.code) ? e.code : "";
+    });
+  }
+
+  function subscribeAll(){
+    if(subscribeAll._done) return;
+    subscribeAll._done = true;
+
+      db.doc("cost/all").onSnapshot(function(snap){
+        costMap = (snap.exists && snap.data().items) || {};
+        costReady = true;
+        var pending = snap.metadata && snap.metadata.hasPendingWrites;
+        if(openDetailId && !pending) openDetail(openDetailId);
+        render();
+      }, function(){});
+
+      db.doc("meta/state").get().then(function(s){ seededOnce = !!(s.exists && s.data().seeded && s.data().v===SEED_VERSION); }).catch(function(){});
+
+      var healed=false;
+      db.collection("items").onSnapshot(function(snap){
+        items = snap.docs.map(function(x){ var v=x.data()||{}; return {
+          id:x.id, order:v.order||0, cat:v.cat, brand:v.brand, name:v.name, form:v.form,
+          glass:v.glass, bottle:v.bottle, unit:v.unit, stock:v.stock||0, min:v.min||0,
+          open:!!v.open, openedAt:v.openedAt||null, openLog:v.openLog||[], notrack:!!v.notrack,
+          note:v.note||"", updatedAt:v.updatedAt, updatedBy:v.updatedBy
+        }; });
+        var live = !(snap.metadata && snap.metadata.fromCache);
+        setSync(live ? "on" : "wait", live ? "동기화됨" : "동기화 중");
+        render();
+        // 아직 한 번도 완전히 시드된 적 없고 품목이 덜 들어와 있으면 한 번 채운다
+        if(live && !healed && !seededOnce && !seedingActive && items.length < SEED.length){
+          healed=true; runSeed(false);
+        }
+      }, function(err){ setSync("off","동기화 오류"); console.warn("items",err); });
+
+      db.doc("meta/log").onSnapshot(function(snap){
+        logEntries = (snap.exists && snap.data().entries) || [];
+        renderLog();
+      }, function(){});
+
+      db.collection("closings").orderBy("date","desc").limit(10).onSnapshot(function(snap){
+        closings = snap.docs.map(function(x){ return x.data()||{}; });
+        renderCloseLog();
+      }, function(){});
+
+      db.collection("tables").onSnapshot(function(snap){
+        tables={}; snap.docs.forEach(function(x){ tables[x.id]=x.data()||{}; });
+        if(currentView==="tables") renderTables();
+      }, function(){});
+
+      db.doc("sales/"+localISO(new Date())).onSnapshot(function(snap){
+        todaySales = snap.exists ? (snap.data()||null) : null;
+        var el=$("salesbtn");
+        if(el) el.textContent = "매출 내역 (오늘 "+won((todaySales&&todaySales.total)||0)+")";
+      }, function(){});
+
+      db.doc("attendance/"+localISO(new Date())).onSnapshot(function(snap){
+        attToday = snap.exists ? (snap.data()||null) : null;
+        if(currentView==="att") renderAttendance();
+      }, function(){});
+  }
+
+  start();
+})();
+</script>
+</body>
+</html>

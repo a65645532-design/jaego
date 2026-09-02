@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 익명 로그인한 접속(=이 앱을 통해 들어온 사람)만 읽고 쓸 수 있음.
+    // 사장/직원 구분은 앱 안에서 PIN으로 처리.
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
