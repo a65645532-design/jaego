@@ -2107,9 +2107,10 @@
     $("g-go").addEventListener("click", submitPin);
     $("g-pin").addEventListener("keydown", function(e){ if(e.key==="Enter") submitPin(); });
 
-    firebase.auth().signInAnonymously().then(function(){
-      return db.doc("config/access").get();
-    }).then(function(s){
+    firebase.auth().signInAnonymously()
+      .catch(function(e){ console.warn("익명 로그인 미설정:", e && e.code); })
+      .then(function(){ return db.doc("config/access").get(); })
+      .then(function(s){
       accessCfg = (s.exists && s.data()) || {};
       var savedRole=null, savedPin=null;
       try{ savedRole=localStorage.getItem("ds_role"); savedPin=localStorage.getItem("ds_pin"); }catch(e){}
