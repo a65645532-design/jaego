@@ -399,6 +399,7 @@
     <div class="foot" style="padding-top:6px">
       <h2>매출 · 시재</h2>
       <button class="linkbtn" id="salesbtn">매출 내역</button>
+      <button class="linkbtn" id="guestbtn">손님 기록 검색</button>
       <button class="linkbtn" id="tillbtn">시재 (오늘)</button>
       <button class="linkbtn" id="tillhistbtn">시재 내역</button>
       <button class="linkbtn owner-only" id="menubtn">메뉴 판매가 관리</button>
@@ -1276,7 +1277,9 @@
           wrap.innerHTML =
             '<div style="font-size:12px;color:var(--ink-dim);font-weight:700;margin:12px 0 6px">매출 날짜 (전날 매출이면 변경)</div>'+
             '<input id="t-date" type="date" value="'+localISO(new Date())+'" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--ground);margin-bottom:10px">'+
-            '<div style="font-size:12px;color:var(--ink-dim);font-weight:700;margin:0 0 6px">손님 메모 (선택)</div>'+
+            '<div style="font-size:12px;color:var(--ink-dim);font-weight:700;margin:0 0 6px">손님 이름 (선택)</div>'+
+            '<input id="t-guest" placeholder="예: 김민수" autocomplete="off" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--ground);font-size:14px;margin-bottom:10px">'+
+            '<div style="font-size:12px;color:var(--ink-dim);font-weight:700;margin:0 0 6px">메모 (선택)</div>'+
             '<textarea id="t-memo" placeholder="예: 4명 · 위스키 좋아함 · 재방문 · 생일" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--ground);font-size:13.5px;min-height:46px;resize:vertical;margin-bottom:10px"></textarea>'+
             '<div style="font-size:12px;color:var(--ink-dim);font-weight:700;margin:0 0 7px">결제 수단</div>'+
             '<div class="row2">'+
@@ -1303,9 +1306,10 @@
         var today=localISO(new Date());
         var date=($("t-date") && $("t-date").value) || today;
         var memo=($("t-memo") && $("t-memo").value.trim()) || "";
+        var guest=($("t-guest") && $("t-guest").value.trim()) || "";
         var wrap=$("t-donewrap");
         if(wrap) wrap.innerHTML='<div class="sub" style="padding:8px 0">처리 중…</div>';
-        recordSale(n, soldLines, tot, pay, date, memo).then(function(){
+        recordSale(n, soldLines, tot, pay, date, memo, guest).then(function(){
           if(date===today) return applyStockForSale(soldLines, n);  // 과거 날짜는 재고 자동차감 안 함
         }).then(function(){
           lines.length=0; persist();
@@ -1369,15 +1373,63 @@
     draw("");
   }
 
-  function recordSale(n, lines, total, pay, dateOverride, memo){
+  function recordSale(n, lines, total, pay, dateOverride, memo, guest){
     if(!db) return Promise.reject({code:"unavailable", message:"동기화 연결 안 됨"});
     var date = dateOverride || localISO(new Date());
     return appendDailyDoc("sales/"+date, function(d){
       var orders = d.orders || [];
-      orders.push({ t:n, at:nowISO(), by:me||"", total:total, pay:pay||"기타", memo:memo||"",
+      orders.push({ t:n, at:nowISO(), by:me||"", total:total, pay:pay||"기타", memo:memo||"", guest:guest||"",
         lines: lines.map(function(l){ return {name:l.name, opt:l.opt||"", qty:l.qty, price:l.price}; }) });
       return { date:date, orders:orders, total:(d.total||0)+total, count:(d.count||0)+1, updatedAt:nowISO() };
     });
+  }
+
+  // 손님 이름으로 방문 기록 검색
+  function openGuestSearch(){
+    if(!db){ showToast("동기화 연결 후 가능해요"); return; }
+    var b=$("sheetbody");
+    b.innerHTML = '<h3>손님 기록</h3><div class="sub">계산 완료 시 입력한 손님 이름으로 지난 방문을 찾습니다</div>'+
+      '<div class="row2" style="margin-bottom:10px">'+
+        '<input id="gs-q" class="search" placeholder="손님 이름" autocomplete="off" style="flex:1">'+
+        '<button class="savebtn" id="gs-go" style="flex:none;width:64px">검색</button>'+
+      '</div>'+
+      '<div id="gs-res"></div>';
+    function run(){
+      var q=($("gs-q").value||"").trim().toLowerCase();
+      if(!q){ $("gs-res").innerHTML='<div class="sub">이름을 입력하세요</div>'; return; }
+      $("gs-res").innerHTML='<div class="sub">찾는 중…</div>';
+      db.collection("sales").orderBy("date","desc").limit(160).get().then(function(snap){
+        var hits=[];
+        snap.docs.forEach(function(x){
+          var d=x.data()||{};
+          (d.orders||[]).forEach(function(o){
+            if((o.guest||"").toLowerCase().indexOf(q)>=0){
+              hits.push({date:d.date, o:o});
+            }
+          });
+        });
+        if(!hits.length){ $("gs-res").innerHTML='<div class="sub">기록 없음</div>'; return; }
+        // 이름별 그룹
+        var byName={};
+        hits.forEach(function(h){ (byName[h.o.guest]=byName[h.o.guest]||[]).push(h); });
+        $("gs-res").innerHTML = Object.keys(byName).sort().map(function(nm){
+          var v=byName[nm];
+          var tot=v.reduce(function(s,h){ return s+(h.o.total||0); },0);
+          return '<div style="margin-top:14px"><div style="font-weight:800;font-size:14px">'+esc(nm)+
+            ' <span style="color:var(--ink-dim);font-weight:400">· '+v.length+'회 · 누적 '+won(tot)+'</span></div>'+
+            v.sort(function(a,c){ return a.date<c.date?1:-1; }).map(function(h){
+              var lineTxt=(h.o.lines||[]).map(function(l){ return l.name+(l.opt?"("+l.opt+")":"")+"×"+l.qty; }).join(", ");
+              return '<div class="kv" style="align-items:flex-start"><span>'+h.date.slice(5).replace("-","/")+' · '+h.o.t+'번 · '+esc(h.o.pay||"")+
+                (h.o.memo?'<br><span style="color:var(--ink-dim);font-weight:400">📝 '+esc(h.o.memo)+'</span>':'')+
+                (lineTxt?'<br><span style="color:var(--ink-dim);font-weight:400;font-size:11.5px">'+esc(lineTxt)+'</span>':'')+
+                '</span><b>'+won(h.o.total)+'</b></div>';
+            }).join("")+'</div>';
+        }).join("");
+      }).catch(function(){ $("gs-res").innerHTML='<div class="sub">검색 실패</div>'; });
+    }
+    $("gs-go").onclick=run;
+    $("gs-q").addEventListener("keydown", function(e){ if(e.key==="Enter") run(); });
+    openSheet();
   }
 
   // 날짜별 문서에 이어붙이기: 읽기→쓰기 + 실패 시 재시도 (lease 없이 — 소규모 매장이라 동시 계산 거의 없음)
@@ -1556,6 +1608,7 @@
         (d.orders||[]).slice().reverse().map(function(o){
           var idx=(d.orders||[]).indexOf(o);
           return '<div class="kv" style="align-items:flex-start"><span>'+(o.t==="직접입력"?"직접입력":o.t+"번")+' · '+esc(o.by||"?")+' · '+esc(o.pay||"기타")+' · '+timeShort(o.at)+
+            (o.guest?'<br><span style="font-weight:600">👤 '+esc(o.guest)+'</span>':'')+
             (o.memo?'<br><span style="color:var(--ink-dim);font-weight:400">📝 '+esc(o.memo)+'</span>':'')+'</span>'+
             '<b>'+won(o.total)+(canEdit?' <button class="tl-x" data-delorder="'+idx+'" title="이 건 삭제">✕</button>':'')+'</b></div>';
         }).join("")+
@@ -1899,6 +1952,7 @@
   $("menubtn").addEventListener("click", openMenuManager);
   $("pinbtn").addEventListener("click", openPinSettings);
   $("logoutbtn").addEventListener("click", logout);
+  $("guestbtn").addEventListener("click", openGuestSearch);
   $("att-in").addEventListener("click", function(){ punch("in"); });
   $("att-out").addEventListener("click", function(){ punch("out"); });
   $("atthistbtn").addEventListener("click", openAttHistory);
