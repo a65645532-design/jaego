@@ -351,8 +351,8 @@
     <span class="modebadge" id="modebadge" title="이 페이지를 만든 사람(사장)만 원가·매출·메뉴가격을 봅니다">확인 중</span>
   </div>
   <div class="tabnav">
-    <button data-v="inv" class="on">재고장부</button>
-    <button data-v="tables">테이블</button>
+    <button data-v="inv">재고장부</button>
+    <button data-v="tables" class="on">테이블</button>
     <button data-v="att">근태</button>
   </div>
   <div class="whobar">
@@ -360,7 +360,7 @@
     <input id="who" placeholder="이름 입력" autocomplete="off" maxlength="12">
   </div>
 
-  <div id="v-inv">
+  <div id="v-inv" hidden>
     <div class="summary">
       <button class="stat danger" id="stat-short" aria-pressed="false">
         <div class="n" id="n-short">–</div><div class="l">발주 필요</div>
@@ -393,7 +393,7 @@
     </div>
   </div>
 
-  <div id="v-tables" hidden>
+  <div id="v-tables">
     <div class="tblhead">테이블 · 손님 계산 참고용 · <span id="tbl-sum">합계 0원</span></div>
     <div class="tblgrid" id="tblgrid"></div>
     <div class="foot" style="padding-top:6px">
@@ -524,7 +524,7 @@
   var costMap={}, costReady=false, openDetailId=null, seedingActive=false, seededOnce=false;
   function ownerView(){ return isOwner && !previewStaff; }
   var filterCat="all", showShort=false, showOpen=false, q="";
-  var currentView="inv", tables={}, todaySales=null, attToday=null;
+  var currentView="tables", tables={}, todaySales=null, attToday=null;
   var me = "";
   try{ me = localStorage.getItem("ds_inv_who") || ""; }catch(e){}
   var clientId = "c"+Math.random().toString(36).slice(2)+Date.now().toString(36);
@@ -2083,6 +2083,7 @@
     $("att-me") && ($("att-me").textContent = me || "이름을 입력하세요");
     applyMode();
     subscribeAll();
+    switchView("tables");   // 테이블 탭이 기본
   }
 
   function start(){
