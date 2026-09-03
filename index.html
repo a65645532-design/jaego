@@ -1750,8 +1750,10 @@
       return {id:l.id||"", name:l.name, opt:l.opt||"", price:l.price||0, qty:l.qty||1, svc:(!!l.svc || l.price===0), prevPrice:null};
     });
     var pay=order.pay||"기타";
+    var guest=order.guest||"", memo=order.memo||"";
     var openMore=-1, subMode=null, subN=1;
     function total(){ return lines.reduce(function(s,l){ return s+(l.svc?0:(l.price||0)*(l.qty||0)); },0); }
+    function syncGuestMemo(){ var g=$("eo-guest"), m=$("eo-memo"); if(g) guest=g.value; if(m) memo=m.value; }
     function priceFromMenu(l){
       if(l.id){ var it=items.find(function(x){return x.id===l.id;}); if(it){ var ps=itemPrices(it); for(var j=0;j<ps.length;j++){ if(ps[j].opt===l.opt) return ps[j].price; } } }
       return l.price||0;
@@ -1825,17 +1827,24 @@
         '<div class="row2">'+["카드","현금","기타"].map(function(p){
           return '<button class="savebtn" data-pay="'+p+'" style="background:'+(pay===p?'var(--brand)':'var(--surface-2)')+';color:'+(pay===p?'#fff':'var(--ink)')+'">'+p+'</button>';
         }).join("")+'</div>'+
+        '<div style="font-size:12px;font-weight:700;color:var(--ink-dim);margin:16px 0 6px">손님 이름 (선택)</div>'+
+        '<input id="eo-guest" placeholder="예: 김민수" autocomplete="off" value="'+esc(guest)+'" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--ground);font-size:14px">'+
+        '<div style="font-size:12px;font-weight:700;color:var(--ink-dim);margin:12px 0 6px">메모 (선택)</div>'+
+        '<textarea id="eo-memo" placeholder="예: 4명 · 위스키 좋아함 · 재방문 · 생일" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--ground);font-size:13.5px;min-height:46px;resize:vertical">'+esc(memo)+'</textarea>'+
         '<div class="kv tot" style="font-size:16px;margin-top:16px"><span>합계</span><span>'+won(total())+'</span></div>'+
         '<button class="savebtn" id="eo-save" style="margin-top:12px">저장</button>'+
         '<button class="delbtn" id="eo-del">이 건 삭제</button>';
       Array.prototype.forEach.call(b.querySelectorAll("[data-eo]"), function(el){
-        el.onclick=function(){ act(el.getAttribute("data-eo"), +el.getAttribute("data-i")); };
+        el.onclick=function(){ syncGuestMemo(); act(el.getAttribute("data-eo"), +el.getAttribute("data-i")); };
       });
       Array.prototype.forEach.call(b.querySelectorAll("[data-pay]"), function(el){
-        el.onclick=function(){ pay=el.getAttribute("data-pay"); draw(); };
+        el.onclick=function(){ syncGuestMemo(); pay=el.getAttribute("data-pay"); draw(); };
       });
+      $("eo-guest").oninput=function(){ guest=this.value; };
+      $("eo-memo").oninput=function(){ memo=this.value; };
       $("eo-back").onclick=function(){ refreshSalesDay(date); };
       $("eo-add").onclick=function(){
+        syncGuestMemo();
         openItemPicker(function(p){
           var ex=null;
           for(var k=0;k<lines.length;k++){ var L=lines[k]; if(L.svc) continue; if(L.opt===p.opt && (p.id? L.id===p.id : (!L.id && L.name===p.name))){ ex=L; break; } }
@@ -1845,10 +1854,11 @@
       var save=$("eo-save");
       save.onclick=function(){
         if(!me){ needName(); return; }
+        syncGuestMemo();
         save.disabled=true; save.textContent="저장 중…";
         var orders=(d.orders||[]).slice();
         var newTot=total();
-        var no={ t:order.t, at:order.at, by:order.by||"", total:newTot, pay:pay, memo:order.memo||"", guest:order.guest||"",
+        var no={ t:order.t, at:order.at, by:order.by||"", total:newTot, pay:pay, memo:(memo||"").trim(), guest:(guest||"").trim(),
           lines:lines.map(function(l){ return {id:l.id||"", name:l.name, opt:l.opt||"", qty:l.qty, price:l.svc?0:l.price, svc:!!l.svc}; }),
           editedAt:nowISO(), editedBy:me||"" };
         if(order.manual) no.manual=true;
