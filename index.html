@@ -400,7 +400,7 @@
         <button class="linkbtn owner-only" id="stocktakebtn">재고 실사 (기준점 입력)</button>
         <button class="linkbtn owner-only" id="costbtn">주류 원가 일괄 입력</button>
         <button class="linkbtn owner-only" id="csvbtn" hidden>재고 전체 CSV로 내려받기</button>
-        <button class="linkbtn owner-only" id="pinbtn">코드 설정 (사장/직원)</button>
+        <button class="linkbtn owner-only" id="pinbtn">설정 (코드 · 영업시간)</button>
         <button class="linkbtn" id="logoutbtn" style="color:var(--ink-dim)">로그아웃 (코드 다시 입력)</button>
       </div>
     </div>
@@ -551,10 +551,17 @@
   function hm(iso){ try{ var d=new Date(iso); return pad2(d.getHours())+":"+pad2(d.getMinutes()); }catch(e){ return ""; } }
   function localISO(d){ return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate()); }
   function dowKo(iso){ var d=new Date(iso+"T12:00:00"); return isNaN(d)?"" : ["일","월","화","수","목","금","토"][d.getDay()]+"요일"; }
-  // 영업일: 19:00~다음날 02:00 영업 → 새벽 결제분은 전날 영업일로. 오전 6시 이전은 전날로 귀속.
-  var BIZ_ROLLOVER_HOUR = 6;
-  function bizDate(d){ d = d ? new Date(d) : new Date(); if(d.getHours() < BIZ_ROLLOVER_HOUR){ d.setDate(d.getDate()-1); } return localISO(d); }
+  // 영업일: 오픈 시각 ~ 다음날 마감 시각. 오픈 시각 이전(새벽·주간) 결제는 전날 영업일로 귀속.
+  // config/hours 로 수정 가능 (openPinSettings). 기본 오픈 19시 / 마감 익일 02시.
+  var BIZ = { openHour: 19, closeHour: 2 };
+  function bizDate(d){
+    d = d ? new Date(d) : new Date();
+    var h = d.getHours() + d.getMinutes()/60;
+    if(h < BIZ.openHour){ d.setDate(d.getDate()-1); }
+    return localISO(d);
+  }
   function bizToday(){ return bizDate(new Date()); }
+  function bizHoursLabel(){ return pad2(BIZ.openHour)+":00 ~ 익일 "+pad2(BIZ.closeHour)+":00"; }
   function won(n){ return n==null||n==="" ? "" : Number(n).toLocaleString("ko-KR")+"원"; }
   function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(m){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[m];}); }
   function isShort(it){ return (it.min||0) > 0 && (it.stock||0) < (it.min||0); }
@@ -1347,7 +1354,7 @@
           if(!me){ needName(); return; }
           var wrap=$("t-donewrap");
           wrap.innerHTML =
-            '<div style="font-size:12px;color:var(--ink-dim);font-weight:700;margin:12px 0 6px">매출 날짜 · '+dowKo(bizToday())+' <span style="font-weight:400">(새벽 결제는 전날 영업일로 자동 처리)</span></div>'+
+            '<div style="font-size:12px;color:var(--ink-dim);font-weight:700;margin:12px 0 6px">매출 날짜 · '+dowKo(bizToday())+' <span style="font-weight:400">(영업일 '+bizHoursLabel()+' 기준 · 새벽분은 전날로)</span></div>'+
             '<input id="t-date" type="date" value="'+bizToday()+'" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--ground);margin-bottom:10px">'+
             '<div style="font-size:12px;color:var(--ink-dim);font-weight:700;margin:0 0 6px">손님 이름 (선택)</div>'+
             '<input id="t-guest" placeholder="예: 김민수" autocomplete="off" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--ground);font-size:14px;margin-bottom:10px">'+
@@ -2406,10 +2413,18 @@
   function openPinSettings(){
     if(!ownerView()) return;
     var b=$("sheetbody");
-    b.innerHTML = '<h3>코드 설정</h3><div class="sub">직원에겐 <b>직원 코드</b>만 알려주세요. 사장 코드로 들어오면 원가·매출·근태 수정이 보입니다.</div>'+
+    b.innerHTML = '<h3>설정</h3><div class="sub">직원에겐 <b>직원 코드</b>만 알려주세요. 사장 코드로 들어오면 원가·매출·근태 수정이 보입니다.</div>'+
+      '<div style="font-weight:800;font-size:13px;margin:2px 0 8px">코드</div>'+
       '<div class="field"><label>사장 코드 (필수)</label><input id="pin-owner" type="tel" inputmode="numeric" maxlength="8" value="'+esc(accessCfg.ownerPin||"")+'"></div>'+
       '<div class="field"><label>직원 코드</label><input id="pin-staff" type="tel" inputmode="numeric" maxlength="8" value="'+esc(accessCfg.staffPin||"")+'"></div>'+
-      '<button class="savebtn" id="pin-save">저장</button>';
+      '<button class="savebtn" id="pin-save">코드 저장</button>'+
+      '<div style="font-weight:800;font-size:13px;margin:24px 0 4px">영업시간</div>'+
+      '<div class="sub" style="margin-bottom:8px">이 시간 기준으로 매출·시재·마감이 <b>영업일</b> 날짜로 묶여요. 오픈 시각 이후 결제는 그날, 그 전(새벽 포함)은 <b>전날 영업일</b>로 기록됩니다. 현재: '+bizHoursLabel()+'</div>'+
+      '<div class="row2">'+
+        '<div class="field" style="flex:1"><label>오픈 시각 (0–23)</label><input id="biz-open" type="number" inputmode="numeric" min="0" max="23" value="'+BIZ.openHour+'"></div>'+
+        '<div class="field" style="flex:1"><label>마감 시각 · 익일 (0–23)</label><input id="biz-close" type="number" inputmode="numeric" min="0" max="23" value="'+BIZ.closeHour+'"></div>'+
+      '</div>'+
+      '<button class="savebtn" id="biz-save" style="background:var(--surface-2);color:var(--ink)">영업시간 저장</button>';
     $("pin-save").onclick=function(){
       var o=($("pin-owner").value||"").trim(), s=($("pin-staff").value||"").trim();
       if(!o){ showToast("사장 코드는 필수예요"); return; }
@@ -2417,6 +2432,15 @@
       db.doc("config/access").set({ownerPin:o, staffPin:s, updatedAt:nowISO()}, {merge:true}).then(function(){
         accessCfg.ownerPin=o; accessCfg.staffPin=s; rememberRole("owner", o);
         closeSheet(); showToast("코드 저장됐어요");
+      }).catch(function(){ showToast("저장 실패"); });
+    };
+    $("biz-save").onclick=function(){
+      var oh=parseInt($("biz-open").value,10), ch=parseInt($("biz-close").value,10);
+      if(isNaN(oh)||isNaN(ch)||oh<0||oh>23||ch<0||ch>23){ showToast("0~23 사이 숫자로 입력하세요"); return; }
+      db.doc("config/hours").set({openHour:oh, closeHour:ch, updatedAt:nowISO(), updatedBy:me||""}, {merge:true}).then(function(){
+        BIZ.openHour=oh; BIZ.closeHour=ch;
+        addLog((me||"?")+" 영업시간 "+pad2(oh)+":00~익일 "+pad2(ch)+":00 설정");
+        showToast("영업시간 저장됨 · 다른 기기는 새로고침 후 반영");
       }).catch(function(){ showToast("저장 실패"); });
     };
     openSheet();
@@ -2444,8 +2468,10 @@
 
     firebase.auth().signInAnonymously()
       .catch(function(e){ console.warn("익명 로그인 미설정:", e && e.code); })
-      .then(function(){ return db.doc("config/access").get(); })
-      .then(function(s){
+      .then(function(){ return Promise.all([db.doc("config/access").get(), db.doc("config/hours").get()]); })
+      .then(function(res){
+      var s = res[0], hs = res[1];
+      if(hs && hs.exists){ var hd=hs.data()||{}; if(typeof hd.openHour==="number") BIZ.openHour=hd.openHour; if(typeof hd.closeHour==="number") BIZ.closeHour=hd.closeHour; }
       accessCfg = (s.exists && s.data()) || {};
       var savedRole=null, savedPin=null;
       try{ savedRole=localStorage.getItem("ds_role"); savedPin=localStorage.getItem("ds_pin"); }catch(e){}
@@ -2480,6 +2506,13 @@
       }, function(){});
 
       db.doc("meta/state").get().then(function(s){ seededOnce = !!(s.exists && s.data().seeded && s.data().v===SEED_VERSION); }).catch(function(){});
+
+      db.doc("config/hours").onSnapshot(function(snap){
+        if(!snap.exists) return;
+        var hd=snap.data()||{};
+        if(typeof hd.openHour==="number") BIZ.openHour=hd.openHour;
+        if(typeof hd.closeHour==="number") BIZ.closeHour=hd.closeHour;
+      }, function(){});
 
       var healed=false;
       db.collection("items").onSnapshot(function(snap){
