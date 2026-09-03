@@ -1622,9 +1622,11 @@
           '</div>'+
           '<div class="caldow"><span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span></div>'+
           '<div class="calgrid">'+cells+'</div>'+
-          '<div class="sub" style="margin-top:12px">날짜(파란 칸)를 눌러 상세·수정</div>';
+          '<div class="sub" style="margin-top:12px">날짜(파란 칸)를 눌러 상세·수정</div>'+
+          '<button class="linkbtn" id="cal-addsale" style="margin-top:8px;text-align:center">＋ 매출 직접 입력 (과거 날짜 포함)</button>';
         $("cal-prev").onclick=function(){ view.setMonth(view.getMonth()-1); paint(); };
         $("cal-next").onclick=function(){ view.setMonth(view.getMonth()+1); paint(); };
+        $("cal-addsale").onclick=function(){ if(!me){ needName(); return; } editSaleOrder(localISO(new Date()), {}, null); };
         Array.prototype.forEach.call(b.querySelectorAll(".calcell[data-date]"), function(el){
           el.onclick=function(){
             var dt=el.getAttribute("data-date");
@@ -1708,7 +1710,10 @@
             (o.editedAt?'<br><span style="color:var(--ink-dim);font-weight:400;font-size:11px">✎ 수정됨 '+timeShort(o.editedAt)+'</span>':'')+'</span>'+
             '<b>'+won(o.total)+(canEdit?' <button class="tl-x" data-delorder="'+idx+'" title="이 건 삭제">✕</button>':'')+'</b></div>';
         }).join("")+
-        (canEdit && (d.orders||[]).length ? '<button class="delbtn" id="sale-delall" style="margin-top:16px">이 날짜 매출 전체 삭제</button>' : '');
+        '<button class="linkbtn" id="sale-add" style="margin-top:12px;text-align:center">＋ 이 날짜에 매출 직접 추가</button>'+
+        (canEdit && (d.orders||[]).length ? '<button class="delbtn" id="sale-delall" style="margin-top:10px">이 날짜 매출 전체 삭제</button>' : '');
+      var sadd=$("sale-add");
+      if(sadd) sadd.onclick=function(){ if(!me){ needName(); return; } editSaleOrder(date, d, null); };
       Array.prototype.forEach.call(b.querySelectorAll("[data-editorder]"), function(el){
         el.onclick=function(){ if(!me){ needName(); return; } editSaleOrder(date, d, +el.getAttribute("data-editorder")); };
       });
@@ -1745,10 +1750,14 @@
     $("hist-back").onclick=function(){ openHistory(kind); };
   }
 
-  // 기록된 매출 1건 수정 (품목 수량·서비스·단가·품목 추가·결제수단)
+  // 매출 1건 수정 (idx=번호) 또는 이 날짜에 매출 직접 추가 (idx=null)
   function editSaleOrder(date, d, idx){
     var b=$("sheetbody");
-    var order=(d.orders||[])[idx];
+    var isNew=(idx==null);
+    d = d || {};
+    var order = isNew
+      ? { t:"직접입력", at:nowISO(), by:me||"", pay:"기타", lines:[], total:0, manual:true }
+      : (d.orders||[])[idx];
     if(!order){ showToast("건을 찾을 수 없어요"); return; }
     var lines=(order.lines||[]).map(function(l){
       return {id:l.id||"", name:l.name, opt:l.opt||"", price:l.price||0, qty:l.qty||1, svc:(!!l.svc || l.price===0), prevPrice:null};
@@ -1822,10 +1831,12 @@
       draw();
     }
     function draw(){
-      b.innerHTML = '<button class="linkbtn" id="eo-back" style="padding:6px 0 12px">‹ '+date+' 매출로</button>'+
-        '<h3>매출 건 수정</h3>'+
-        '<div class="sub">'+(order.t==="직접입력"?"직접입력":order.t+"번 테이블")+' · '+esc(order.by||"?")+' · '+timeShort(order.at)+'</div>'+
-        (lines.length ? lines.map(lineHTML).join("") : '<div class="empty" style="padding:18px 0">품목이 없어요</div>')+
+      b.innerHTML = '<button class="linkbtn" id="eo-back" style="padding:6px 0 12px">‹ '+(isNew?'매출 달력':date+' 매출')+'</button>'+
+        '<h3>'+(isNew?'매출 직접 입력':'매출 건 수정')+'</h3>'+
+        (isNew
+          ? '<div style="font-size:12px;font-weight:700;color:var(--ink-dim);margin:2px 0 6px">매출 날짜</div><input id="eo-date" type="date" value="'+date+'" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--ground);font-size:14px;margin-bottom:8px">'
+          : '<div class="sub">'+(order.t==="직접입력"?"직접입력":order.t+"번 테이블")+' · '+esc(order.by||"?")+' · '+timeShort(order.at)+(order.editedAt?' · ✎ 수정됨':'')+'</div>')+
+        (lines.length ? lines.map(lineHTML).join("") : '<div class="empty" style="padding:18px 0">품목이 없어요 · ＋ 품목 추가</div>')+
         '<button class="savebtn" id="eo-add" style="background:var(--surface-2);color:var(--ink);margin-top:10px">＋ 품목 추가</button>'+
         '<div style="font-size:12px;font-weight:700;color:var(--ink-dim);margin:16px 0 6px">결제 수단</div>'+
         '<div class="row2">'+["카드","현금","기타"].map(function(p){
@@ -1837,16 +1848,17 @@
         '<textarea id="eo-memo" placeholder="예: 4명 · 위스키 좋아함 · 재방문 · 생일" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--ground);font-size:13.5px;min-height:46px;resize:vertical">'+esc(memo)+'</textarea>'+
         '<div class="kv tot" style="font-size:16px;margin-top:16px"><span>합계</span><span>'+won(total())+'</span></div>'+
         '<button class="savebtn" id="eo-save" style="margin-top:12px">저장</button>'+
-        '<button class="delbtn" id="eo-del">이 건 삭제</button>';
+        (isNew ? '' : '<button class="delbtn" id="eo-del">이 건 삭제</button>');
       Array.prototype.forEach.call(b.querySelectorAll("[data-eo]"), function(el){
         el.onclick=function(){ syncGuestMemo(); act(el.getAttribute("data-eo"), +el.getAttribute("data-i")); };
       });
       Array.prototype.forEach.call(b.querySelectorAll("[data-pay]"), function(el){
         el.onclick=function(){ syncGuestMemo(); pay=el.getAttribute("data-pay"); draw(); };
       });
+      var ed=$("eo-date"); if(ed) ed.onchange=function(){ date=this.value||date; };
       $("eo-guest").oninput=function(){ guest=this.value; };
       $("eo-memo").oninput=function(){ memo=this.value; };
-      $("eo-back").onclick=function(){ refreshSalesDay(date); };
+      $("eo-back").onclick=function(){ if(isNew) openSalesCalendar(); else refreshSalesDay(date); };
       $("eo-add").onclick=function(){
         syncGuestMemo();
         openItemPicker(function(p){
@@ -1859,21 +1871,31 @@
       save.onclick=function(){
         if(!me){ needName(); return; }
         syncGuestMemo();
-        save.disabled=true; save.textContent="저장 중…";
-        var orders=(d.orders||[]).slice();
+        var ed2=$("eo-date"); if(ed2 && ed2.value) date=ed2.value;
         var newTot=total();
-        var no={ t:order.t, at:order.at, by:order.by||"", total:newTot, pay:pay, memo:(memo||"").trim(), guest:(guest||"").trim(),
-          lines:lines.map(function(l){ return {id:l.id||"", name:l.name, opt:l.opt||"", qty:l.qty, price:l.svc?0:l.price, svc:!!l.svc}; }),
-          editedAt:nowISO(), editedBy:me||"" };
+        if(isNew && !lines.length){ showToast("품목을 하나 이상 추가하세요"); return; }
+        save.disabled=true; save.textContent="저장 중…";
+        var no={ t:order.t, at:order.at, by:order.by||me||"", total:newTot, pay:pay, memo:(memo||"").trim(), guest:(guest||"").trim(),
+          lines:lines.map(function(l){ return {id:l.id||"", name:l.name, opt:l.opt||"", qty:l.qty, price:l.svc?0:l.price, svc:!!l.svc}; }) };
         if(order.manual) no.manual=true;
-        orders[idx]=no;
-        var newDayTot=Math.max(0,(d.total||0)-(order.total||0)+newTot);
-        db.doc("sales/"+date).set({date:date, orders:orders, total:newDayTot, count:orders.length, updatedAt:nowISO()})
-          .then(function(){ addLog((me||"?")+" "+date+" 매출 건 수정 ("+won(order.total||0)+" → "+won(newTot)+")"); showToast("저장됨"); refreshSalesDay(date); })
+        if(!isNew){ no.editedAt=nowISO(); no.editedBy=me||""; }
+        var work;
+        if(isNew){
+          work = db.doc("sales/"+date).get().then(function(s){
+            var cur = s.exists ? (s.data()||{}) : {};
+            var orders=(cur.orders||[]).slice(); orders.push(no);
+            return db.doc("sales/"+date).set({date:date, orders:orders, total:(cur.total||0)+newTot, count:orders.length, updatedAt:nowISO()});
+          }).then(function(){ addLog((me||"?")+" "+date+" 매출 직접 입력 ("+won(newTot)+" · "+pay+")"); });
+        } else {
+          var orders=(d.orders||[]).slice(); orders[idx]=no;
+          work = db.doc("sales/"+date).set({date:date, orders:orders, total:Math.max(0,(d.total||0)-(order.total||0)+newTot), count:orders.length, updatedAt:nowISO()})
+            .then(function(){ addLog((me||"?")+" "+date+" 매출 건 수정 ("+won(order.total||0)+" → "+won(newTot)+")"); });
+        }
+        work.then(function(){ showToast("저장됨"); refreshSalesDay(date); })
           .catch(function(err){ save.disabled=false; save.textContent="저장"; showToast("저장 실패"+(err&&err.code?" ("+err.code+")":"")); });
       };
       var del=$("eo-del"), armed=false;
-      del.onclick=function(){
+      if(del) del.onclick=function(){
         if(!me){ needName(); return; }
         if(!armed){ armed=true; del.textContent="정말 삭제? 한 번 더 누르기"; return; }
         var orders=(d.orders||[]).slice(), rm=orders.splice(idx,1)[0];
