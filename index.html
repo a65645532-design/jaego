@@ -854,7 +854,6 @@
   // ---------- detail sheet ----------
   function openDetail(id){
     var it=items.find(function(x){return x.id===id;}); if(!it) return;
-    openDetailId = id;
     var b=$("sheetbody");
 
     if(!ownerView()){
@@ -893,7 +892,7 @@
       };
       $("d-in").onclick=function(){ bump(id,1); closeSheet(); };
       $("d-out").onclick=function(){ bump(id,-1); closeSheet(); };
-      openSheet();
+      openSheet(); openDetailId = id;
       return;
     }
 
@@ -967,7 +966,7 @@
         .then(function(){ addLog(it.name+" 품목 삭제"); closeSheet(); showToast("삭제됐어요"); })
         .catch(function(){ showToast("삭제 실패"); });
     };
-    openSheet();
+    openSheet(); openDetailId = id;
   }
 
   function openAdd(){
@@ -2200,7 +2199,7 @@
   }
 
   // ---------- sheet ----------
-  function openSheet(){ $("scrim").classList.add("on"); $("sheet").classList.add("on"); }
+  function openSheet(){ openDetailId=null; $("scrim").classList.add("on"); $("sheet").classList.add("on"); }
   function closeSheet(){ $("scrim").classList.remove("on"); $("sheet").classList.remove("on"); openDetailId=null; }
   $("scrim").addEventListener("click", closeSheet);
 
