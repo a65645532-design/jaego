@@ -1556,7 +1556,11 @@
         work[l.id]=work[l.id]||{};
         work[l.id].stockDelta=(work[l.id].stockDelta||0) - l.qty;
       } else if(l.opt==="잔"){
-        if(!it.open){ work[l.id]=work[l.id]||{}; work[l.id].doOpen=true; }
+        // 오픈된 병이 없으면 새 병을 따는 것 → 병 재고 -1 (한 주문에 여러 잔이어도 병은 1개만)
+        if(!it.open){
+          work[l.id]=work[l.id]||{};
+          if(!work[l.id].doOpen){ work[l.id].doOpen=true; work[l.id].stockDelta=(work[l.id].stockDelta||0) - 1; }
+        }
       } else if(!l.opt && it.unit!=="케그" && it.unit!=="잔" && it.min!=null){
         work[l.id]=work[l.id]||{};
         work[l.id].stockDelta=(work[l.id].stockDelta||0) - l.qty;
@@ -1571,8 +1575,8 @@
       if(w.stockDelta){ to=Math.max(0, from+w.stockDelta); patch.stock=to; }
       if(w.doOpen){ patch.open=true; patch.openedAt=nowISO(); }
       return db.doc("items/"+id).update(patch).then(function(){
-        if(w.stockDelta) logStockDelta(it.name, from, to, (tableN?tableN+"번 테이블 판매":"테이블 판매"));
-        if(w.doOpen) addLog(it.name+" 판매로 자동 오픈 표시");
+        if(w.stockDelta) logStockDelta(it.name, from, to, (tableN?tableN+"번 테이블 판매":"테이블 판매")+(w.doOpen?" · 새 병 오픈":""));
+        if(w.doOpen && !w.stockDelta) addLog(it.name+" 판매로 자동 오픈 표시");
       });
     }));
   }
