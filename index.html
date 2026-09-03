@@ -551,6 +551,10 @@
   function hm(iso){ try{ var d=new Date(iso); return pad2(d.getHours())+":"+pad2(d.getMinutes()); }catch(e){ return ""; } }
   function localISO(d){ return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate()); }
   function dowKo(iso){ var d=new Date(iso+"T12:00:00"); return isNaN(d)?"" : ["일","월","화","수","목","금","토"][d.getDay()]+"요일"; }
+  // 영업일: 19:00~다음날 02:00 영업 → 새벽 결제분은 전날 영업일로. 오전 6시 이전은 전날로 귀속.
+  var BIZ_ROLLOVER_HOUR = 6;
+  function bizDate(d){ d = d ? new Date(d) : new Date(); if(d.getHours() < BIZ_ROLLOVER_HOUR){ d.setDate(d.getDate()-1); } return localISO(d); }
+  function bizToday(){ return bizDate(new Date()); }
   function won(n){ return n==null||n==="" ? "" : Number(n).toLocaleString("ko-KR")+"원"; }
   function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(m){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[m];}); }
   function isShort(it){ return (it.min||0) > 0 && (it.stock||0) < (it.min||0); }
@@ -1343,8 +1347,8 @@
           if(!me){ needName(); return; }
           var wrap=$("t-donewrap");
           wrap.innerHTML =
-            '<div style="font-size:12px;color:var(--ink-dim);font-weight:700;margin:12px 0 6px">매출 날짜 (전날 매출이면 변경)</div>'+
-            '<input id="t-date" type="date" value="'+localISO(new Date())+'" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--ground);margin-bottom:10px">'+
+            '<div style="font-size:12px;color:var(--ink-dim);font-weight:700;margin:12px 0 6px">매출 날짜 · '+dowKo(bizToday())+' <span style="font-weight:400">(새벽 결제는 전날 영업일로 자동 처리)</span></div>'+
+            '<input id="t-date" type="date" value="'+bizToday()+'" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--ground);margin-bottom:10px">'+
             '<div style="font-size:12px;color:var(--ink-dim);font-weight:700;margin:0 0 6px">손님 이름 (선택)</div>'+
             '<input id="t-guest" placeholder="예: 김민수" autocomplete="off" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--ground);font-size:14px;margin-bottom:10px">'+
             '<div style="font-size:12px;color:var(--ink-dim);font-weight:700;margin:0 0 6px">메모 (선택)</div>'+
@@ -1371,7 +1375,7 @@
       }
       function finalize(pay){
         var tot=linesTotal(lines), soldLines=lines.slice();
-        var today=localISO(new Date());
+        var today=bizToday();
         var date=($("t-date") && $("t-date").value) || today;
         var memo=($("t-memo") && $("t-memo").value.trim()) || "";
         var guest=($("t-guest") && $("t-guest").value.trim()) || "";
@@ -1464,7 +1468,7 @@
 
   function recordSale(n, lines, total, pay, dateOverride, memo, guest){
     if(!db) return Promise.reject({code:"unavailable", message:"동기화 연결 안 됨"});
-    var date = dateOverride || localISO(new Date());
+    var date = dateOverride || bizToday();
     return appendDailyDoc("sales/"+date, function(d){
       var orders = d.orders || [];
       orders.push({ t:n, at:nowISO(), by:me||"", total:total, pay:pay||"기타", memo:memo||"", guest:guest||"",
@@ -1538,7 +1542,7 @@
   function logStockDelta(itemName, from, to, source){
     addLog(itemName+" 재고 "+from+" → "+to+(source?" · "+source:""));
     if(!db || from===to) return;
-    var date=localISO(new Date());
+    var date=bizToday();
     appendDailyDoc("stockLog/"+date, function(d){
       var entries=(d.entries||[]).concat([{ ts:nowISO(), who:me||"", item:itemName, from:from, to:to, source:source||"수동" }]);
       return { date:date, entries:entries, updatedAt:nowISO() };
@@ -1627,7 +1631,7 @@
           '<button class="linkbtn" id="cal-addsale" style="margin-top:8px;text-align:center">＋ 매출 직접 입력 (과거 날짜 포함)</button>';
         $("cal-prev").onclick=function(){ view.setMonth(view.getMonth()-1); paint(); };
         $("cal-next").onclick=function(){ view.setMonth(view.getMonth()+1); paint(); };
-        $("cal-addsale").onclick=function(){ if(!me){ needName(); return; } editSaleOrder(localISO(new Date()), {}, null); };
+        $("cal-addsale").onclick=function(){ if(!me){ needName(); return; } editSaleOrder(bizToday(), {}, null); };
         Array.prototype.forEach.call(b.querySelectorAll(".calcell[data-date]"), function(el){
           el.onclick=function(){
             var dt=el.getAttribute("data-date");
@@ -1931,8 +1935,8 @@
   // 오늘 시재 (사장 전용): 시작 시재 + 현금 매출 - 지출 = 예상 시재, 실사 금액과 비교
   function openTill(date){
     if(!db){ showToast("동기화 연결 후 가능해요"); return; }
-    date = date || localISO(new Date());
-    var isToday = date === localISO(new Date());
+    date = date || bizToday();
+    var isToday = date === bizToday();
     var b=$("sheetbody");
     b.innerHTML = '<h3>시재 · '+date+'</h3><div class="sub">불러오는 중…</div>';
     openSheet();
@@ -2071,7 +2075,7 @@
   }
   function openClosing(){
     if(!db){ showToast("동기화 연결 후 가능해요"); return; }
-    var today = localISO(new Date());
+    var today = bizToday();
     var opens = items.filter(function(x){return x.open;}).sort(function(a,b){return (a.order||0)-(b.order||0);});
     var shorts = items.filter(isShort);
     var b=$("sheetbody");
@@ -2509,10 +2513,10 @@
         if(currentView==="tables") renderTables();
       }, function(){});
 
-      db.doc("sales/"+localISO(new Date())).onSnapshot(function(snap){
+      db.doc("sales/"+bizToday()).onSnapshot(function(snap){
         todaySales = snap.exists ? (snap.data()||null) : null;
         var el=$("salesbtn");
-        if(el) el.textContent = "매출 내역 (오늘 "+won((todaySales&&todaySales.total)||0)+")";
+        if(el) el.textContent = "매출 내역 (영업일 "+bizToday().slice(5).replace("-","/")+" · "+won((todaySales&&todaySales.total)||0)+")";
       }, function(){});
 
       db.doc("attendance/"+localISO(new Date())).onSnapshot(function(snap){
