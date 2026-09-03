@@ -550,6 +550,7 @@
   function pad2(n){ return (n<10?"0":"")+n; }
   function hm(iso){ try{ var d=new Date(iso); return pad2(d.getHours())+":"+pad2(d.getMinutes()); }catch(e){ return ""; } }
   function localISO(d){ return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate()); }
+  function dowKo(iso){ var d=new Date(iso+"T12:00:00"); return isNaN(d)?"" : ["일","월","화","수","목","금","토"][d.getDay()]+"요일"; }
   function won(n){ return n==null||n==="" ? "" : Number(n).toLocaleString("ko-KR")+"원"; }
   function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(m){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[m];}); }
   function isShort(it){ return (it.min||0) > 0 && (it.stock||0) < (it.min||0); }
@@ -1834,7 +1835,14 @@
       b.innerHTML = '<button class="linkbtn" id="eo-back" style="padding:6px 0 12px">‹ '+(isNew?'매출 달력':date+' 매출')+'</button>'+
         '<h3>'+(isNew?'매출 직접 입력':'매출 건 수정')+'</h3>'+
         (isNew
-          ? '<div style="font-size:12px;font-weight:700;color:var(--ink-dim);margin:2px 0 6px">매출 날짜</div><input id="eo-date" type="date" value="'+date+'" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--ground);font-size:14px;margin-bottom:8px">'
+          ? '<div style="font-size:12px;font-weight:700;color:var(--ink-dim);margin:2px 0 6px">매출 날짜 · '+dowKo(date)+'</div>'+
+            '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">'+
+              '<button class="savebtn" id="eo-dprev" style="flex:none;width:46px;margin:0;background:var(--surface-2);color:var(--ink)">‹</button>'+
+              '<input id="eo-date" type="date" value="'+date+'" style="flex:1;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--ground);font-size:14px">'+
+              '<button class="savebtn" id="eo-dnext" style="flex:none;width:46px;margin:0;background:var(--surface-2);color:var(--ink)">›</button>'+
+            '</div>'+
+            '<div style="font-size:12px;font-weight:700;color:var(--ink-dim);margin:2px 0 6px">테이블 번호 (선택)</div>'+
+            '<input id="eo-tno" inputmode="numeric" autocomplete="off" placeholder="비우면 &#39;직접입력&#39;으로 기록" value="'+(order.t&&order.t!=="직접입력"?esc(String(order.t)):"")+'" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--ground);font-size:14px;margin-bottom:4px">'
           : '<div class="sub">'+(order.t==="직접입력"?"직접입력":order.t+"번 테이블")+' · '+esc(order.by||"?")+' · '+timeShort(order.at)+(order.editedAt?' · ✎ 수정됨':'')+'</div>')+
         (lines.length ? lines.map(lineHTML).join("") : '<div class="empty" style="padding:18px 0">품목이 없어요 · ＋ 품목 추가</div>')+
         '<button class="savebtn" id="eo-add" style="background:var(--surface-2);color:var(--ink);margin-top:10px">＋ 품목 추가</button>'+
@@ -1855,7 +1863,17 @@
       Array.prototype.forEach.call(b.querySelectorAll("[data-pay]"), function(el){
         el.onclick=function(){ syncGuestMemo(); pay=el.getAttribute("data-pay"); draw(); };
       });
-      var ed=$("eo-date"); if(ed) ed.onchange=function(){ date=this.value||date; };
+      var ed=$("eo-date"); if(ed) ed.onchange=function(){ date=this.value||date; draw(); };
+      var etn=$("eo-tno"); if(etn) etn.oninput=function(){ var v=this.value.trim(); order.t = v ? (/^\d+$/.test(v)? +v : v) : "직접입력"; };
+      var edp=$("eo-dprev"), edn=$("eo-dnext");
+      function shiftDate(delta){
+        syncGuestMemo();
+        var cur=($("eo-date")&&$("eo-date").value)||date;
+        var dt=new Date(cur+"T12:00:00"); dt.setDate(dt.getDate()+delta); date=localISO(dt);
+        draw();
+      }
+      if(edp) edp.onclick=function(){ shiftDate(-1); };
+      if(edn) edn.onclick=function(){ shiftDate(1); };
       $("eo-guest").oninput=function(){ guest=this.value; };
       $("eo-memo").oninput=function(){ memo=this.value; };
       $("eo-back").onclick=function(){ if(isNew) openSalesCalendar(); else refreshSalesDay(date); };
@@ -1872,6 +1890,7 @@
         if(!me){ needName(); return; }
         syncGuestMemo();
         var ed2=$("eo-date"); if(ed2 && ed2.value) date=ed2.value;
+        var etn2=$("eo-tno"); if(etn2){ var tv=etn2.value.trim(); order.t = tv ? (/^\d+$/.test(tv)? +tv : tv) : "직접입력"; }
         var newTot=total();
         if(isNew && !lines.length){ showToast("품목을 하나 이상 추가하세요"); return; }
         save.disabled=true; save.textContent="저장 중…";
