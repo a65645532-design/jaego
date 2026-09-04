@@ -321,11 +321,15 @@
   .attdate{text-align:center; font-size:13px; color:var(--ink-dim); margin:6px 0 22px}
   .attme{text-align:center; font-size:13px; color:var(--ink-dim); margin-bottom:12px}
   .attme b{color:var(--ink)}
-  .attbtns{display:flex; gap:12px; margin-bottom:24px}
-  .attbtns button{flex:1; padding:24px 0; border:0; border-radius:18px; font-size:18px; font-weight:800; color:#fff; box-shadow:var(--shadow)}
+  .attbtns{display:flex; gap:12px; margin-bottom:10px}
+  .attbtns button{flex:1; padding:24px 0; border:0; border-radius:18px; font-size:18px; font-weight:800; color:#fff; box-shadow:var(--shadow); transition:opacity .15s}
   .attbtns .in{background:var(--ok)}
   .attbtns .out{background:var(--danger)}
   .attbtns button:active{transform:scale(.97)}
+  .attbtns button.dim{opacity:.32; box-shadow:none}
+  .attbtns button:disabled{opacity:.45}
+  .attstate{text-align:center; font-size:13.5px; color:var(--ink-dim); margin-bottom:22px; min-height:18px}
+  .attstate b{color:var(--ink); font-variant-numeric:tabular-nums}
   .atth2{font-weight:700; font-size:12px; letter-spacing:.04em; color:var(--brand); margin:6px 0 8px}
   .attrow{display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--line-soft); font-size:13.5px}
   .attrow .tag{font-size:10.5px; font-weight:800; padding:2px 7px; border-radius:5px}
@@ -428,9 +432,11 @@
         <button class="in" id="att-in">출근</button>
         <button class="out" id="att-out">퇴근</button>
       </div>
-      <div class="atth2">오늘 근태</div>
+      <div class="attstate" id="att-state"></div>
+      <div class="atth2">오늘 근태 <span id="att-bizhint" style="font-weight:400;color:var(--ink-dim)"></span></div>
       <ul class="log" id="att-log"><li style="border:0;color:var(--ink-dim)">오늘 기록 없음</li></ul>
       <button class="linkbtn" id="atthistbtn" style="margin-top:16px">근태 내역 (일자별)</button>
+      <button class="linkbtn owner-only" id="attfixbtn" style="margin-top:8px">이 영업일 연속 중복 정리</button>
     </div>
   </div>
 </div>
@@ -1051,10 +1057,34 @@
   }
 
   // ============ 근태 ============
+  // 영업일 기준 1개 문서에 그 날 밤샘 근무까지 다 들어감 (출근 20시 → 퇴근 익일 2시 = 같은 영업일 doc).
+  var punchBusy=false;
+  function myEntriesToday(){
+    return ((attToday&&attToday.entries)||[]).filter(function(e){ return e.name===me; })
+      .sort(function(a,b){ return new Date(a.at)-new Date(b.at); });
+  }
+  function myPunchState(){
+    var m=myEntriesToday();
+    return m.length ? m[m.length-1].type : "out";   // 'in' = 근무 중, 'out' = 퇴근/출근 전
+  }
   function renderAttendance(){
     $("att-me").textContent = me || "이름을 입력하세요";
+    var hint=$("att-bizhint"); if(hint) hint.textContent = "· 영업일 "+bizToday().slice(5).replace("-","/");
     var el=$("att-log");
     var ents = (attToday && attToday.entries) || [];
+    var a=$("att-in"), b=$("att-out"), sEl=$("att-state");
+    var st = me ? myPunchState() : "out";
+    if(a&&b){ a.classList.toggle("dim", st==="in"); b.classList.toggle("dim", st!=="in"); }
+    if(sEl){
+      if(!me){ sEl.textContent=""; }
+      else if(st==="in"){
+        var inAt=myEntriesToday().filter(function(e){return e.type==="in";}).pop();
+        var mins=inAt? Math.max(0,(Date.now()-new Date(inAt.at))/60000):0;
+        sEl.innerHTML='근무 중 · '+hm(inAt&&inAt.at)+' 출근 · <b>'+fmtDur(mins)+'</b> 경과';
+      } else {
+        sEl.textContent = myEntriesToday().length ? "퇴근함 · 오늘 다시 출근하려면 그냥 출근을 누르세요" : "출근 전";
+      }
+    }
     if(!ents.length){ el.innerHTML='<li style="border:0;color:var(--ink-dim)">오늘 기록 없음</li>'; return; }
     el.innerHTML = ents.slice().reverse().map(function(e){
       return '<li class="attrow"><span class="tag '+(e.type==="in"?"in":"out")+'">'+(e.type==="in"?"출근":"퇴근")+'</span>'+
@@ -1064,39 +1094,62 @@
   function punch(type){
     if(!me){ needName(); return; }
     if(!db){ showToast("동기화 연결 후 가능해요"); return; }
-    var date=localISO(new Date());
-    var last=null;
-    ((attToday&&attToday.entries)||[]).forEach(function(e){ if(e.name===me) last=e; });
-    if(last && last.type===type){
-      showToast("이미 "+(type==="in"?"출근":"퇴근")+" 기록이 있어요 ("+hm(last.at)+")");
+    if(punchBusy) return;
+    var st=myPunchState();
+    if(type==="in" && st==="in"){
+      var inAt=myEntriesToday().filter(function(e){return e.type==="in";}).pop();
+      showToast("이미 출근 상태예요 ("+hm(inAt&&inAt.at)+"). 먼저 퇴근을 누르세요");
       return;
     }
+    if(type==="out" && st!=="in"){
+      showToast("출근 기록이 없어요. 먼저 출근을 누르세요");
+      return;
+    }
+    punchBusy=true; if($("att-in")) $("att-in").disabled=true; if($("att-out")) $("att-out").disabled=true;
+    var date=bizToday();
+    var dup=false;
     appendDailyDoc("attendance/"+date, function(d){
-      var entries=(d.entries||[]).concat([{ name:me, type:type, at:nowISO() }]);
-      return { date:date, entries:entries, updatedAt:nowISO() };
+      var entries=(d.entries||[]);
+      var mine=entries.filter(function(e){ return e.name===me; }).sort(function(a,b){ return new Date(a.at)-new Date(b.at); });
+      var cur=mine.length ? mine[mine.length-1].type : "out";
+      if((type==="in" && cur==="in") || (type==="out" && cur!=="in")){ dup=true; return { date:date, entries:entries, updatedAt:(d.updatedAt||nowISO()) }; }
+      return { date:date, entries:entries.concat([{ name:me, type:type, at:nowISO() }]), updatedAt:nowISO() };
     }).then(function(){
-      addLog(me+" "+(type==="in"?"출근":"퇴근"));
-      showToast((type==="in"?"출근":"퇴근")+" 기록 · "+hm(nowISO()));
-    }).catch(function(){ showToast("기록 실패 · 다시 시도해주세요"); });
+      if(dup){ showToast(type==="in"?"이미 출근 상태예요":"출근 기록이 없어요"); }
+      else { addLog(me+" "+(type==="in"?"출근":"퇴근")); showToast((type==="in"?"출근":"퇴근")+" 기록 · "+hm(nowISO())); }
+    }).catch(function(){ showToast("기록 실패 · 다시 시도해주세요"); })
+      .then(function(){ punchBusy=false; if($("att-in")) $("att-in").disabled=false; if($("att-out")) $("att-out").disabled=false; });
   }
   function attHours(entries){
-    // 사람별로 in/out 쌍 지어 근무시간(분) 합산
+    // 사람별로 in→out 순서대로 짝 지어 근무시간(분) 합산. 연속 출근은 첫 출근만, 짝 없는 퇴근은 무시.
     var byName={};
     (entries||[]).forEach(function(e){ (byName[e.name]=byName[e.name]||[]).push(e); });
     var out={};
     Object.keys(byName).forEach(function(nm){
       var list=byName[nm].slice().sort(function(a,b){ return new Date(a.at)-new Date(b.at); });
-      var mins=0, openIn=null, first=null, lastT=null;
+      var mins=0, openIn=null, first=null, lastT=null, pairs=0;
       list.forEach(function(e){
         if(!first) first=e.at; lastT=e.at;
-        if(e.type==="in"){ openIn=e.at; }
-        else if(e.type==="out" && openIn){ mins += Math.max(0,(new Date(e.at)-new Date(openIn))/60000); openIn=null; }
+        if(e.type==="in"){ if(!openIn) openIn=e.at; }
+        else if(e.type==="out"){ if(openIn){ mins += Math.max(0,(new Date(e.at)-new Date(openIn))/60000); openIn=null; pairs++; } }
       });
-      out[nm]={ mins:Math.round(mins), first:first, last:lastT, dangling:!!openIn };
+      out[nm]={ mins:Math.round(mins), first:first, last:lastT, dangling:!!openIn, pairs:pairs };
     });
     return out;
   }
   function fmtDur(mins){ var h=Math.floor(mins/60), m=Math.round(mins%60); return h+"시간"+(m?" "+m+"분":""); }
+  // 사람별로 같은 종류(출근/퇴근)가 연속으로 반복된 것을 첫 1건만 남기고 제거
+  function dedupEntries(list){
+    var byName={};
+    (list||[]).forEach(function(e){ (byName[e.name]=byName[e.name]||[]).push(e); });
+    var kept=[];
+    Object.keys(byName).forEach(function(nm){
+      var arr=byName[nm].slice().sort(function(a,b){ return new Date(a.at)-new Date(b.at); });
+      var prev=null;
+      arr.forEach(function(e){ if(!prev || prev.type!==e.type) kept.push(e); prev=e; });
+    });
+    return kept.sort(function(a,b){ return new Date(a.at)-new Date(b.at); });
+  }
 
   function openAttHistory(){
     if(!db){ showToast("동기화 연결 후 가능해요"); return; }
@@ -1173,7 +1226,7 @@
     var work=(d.entries||[]).map(function(e){ return {name:e.name, type:e.type, at:e.at}; });
     var back='<button class="linkbtn" id="ah-back" style="padding:6px 0 12px">‹ 목록으로</button>';
 
-    function isoAt(hhmm){ var p=(date+"T"+(hhmm||"12:00")+":00").split("T"); var dt=new Date(p[0]+"T00:00:00"); var t=(hhmm||"12:00").split(":"); dt.setHours(+t[0],+t[1],0,0); return dt.toISOString(); }
+    function isoAt(hhmm){ var t=(hhmm||"12:00").split(":"); var dt=new Date(date+"T00:00:00"); if(+t[0] < BIZ.openHour) dt.setDate(dt.getDate()+1); dt.setHours(+t[0],+t[1],0,0); return dt.toISOString(); }
 
     function draw(){
       var hrs=attHours(work), names=Object.keys(hrs).sort();
@@ -1201,6 +1254,7 @@
         (editing ? '<div class="row2" style="margin-top:10px">'+
             '<button class="savebtn" id="ad-in" style="background:var(--surface-2);color:var(--ink)">＋ 출근</button>'+
             '<button class="savebtn" id="ad-out" style="background:var(--surface-2);color:var(--ink)">＋ 퇴근</button></div>'+
+          '<button class="linkbtn" id="ad-dedup" style="margin-top:8px;text-align:center">연속 중복(같은 출/퇴근 반복) 정리</button>'+
           '<button class="savebtn" id="ad-save" style="margin-top:10px">저장</button>' : '');
       $("ah-back").onclick=openAttHistory;
 
@@ -1218,6 +1272,12 @@
         });
         $("ad-in").onclick=function(){ work.push({name:me||"", type:"in", at:isoAt(hm(nowISO()))}); draw(); };
         $("ad-out").onclick=function(){ work.push({name:me||"", type:"out", at:isoAt(hm(nowISO()))}); draw(); };
+        $("ad-dedup").onclick=function(){
+          var before=work.length, cleaned=dedupEntries(work);
+          if(cleaned.length===before){ showToast("연속 중복 없음"); return; }
+          work.length=0; Array.prototype.push.apply(work, cleaned);
+          draw(); showToast(before+"건 → "+cleaned.length+"건 · 저장을 눌러 확정");
+        };
         $("ad-save").onclick=function(){
           if(!me){ needName(); return; }
           var clean=work.filter(function(e){ return e.name; });
@@ -2249,6 +2309,25 @@
   $("att-in").addEventListener("click", function(){ punch("in"); });
   $("att-out").addEventListener("click", function(){ punch("out"); });
   $("atthistbtn").addEventListener("click", openAttHistory);
+  (function(){
+    var armed=false, btn=$("attfixbtn");
+    btn.addEventListener("click", function(){
+      if(!ownerView()) return;
+      if(!db){ showToast("동기화 연결 후 가능해요"); return; }
+      var date=bizToday();
+      db.doc("attendance/"+date).get().then(function(s){
+        var d=s.exists?(s.data()||{}):{}, ents=d.entries||[];
+        var cleaned=dedupEntries(ents);
+        if(cleaned.length===ents.length){ showToast("정리할 연속 중복이 없어요"); armed=false; btn.textContent="이 영업일 연속 중복 정리"; return; }
+        if(!armed){ armed=true; btn.textContent=ents.length+"건 → "+cleaned.length+"건 · 한 번 더 누르면 정리"; return; }
+        db.doc("attendance/"+date).set({date:date, entries:cleaned, updatedAt:nowISO(), updatedBy:me||""}).then(function(){
+          addLog((me||"?")+" "+date+" 근태 연속중복 정리 ("+ents.length+"→"+cleaned.length+")");
+          showToast("정리됨 ("+ents.length+" → "+cleaned.length+"건)");
+          armed=false; btn.textContent="이 영업일 연속 중복 정리";
+        }).catch(function(){ showToast("정리 실패"); });
+      }).catch(function(){ showToast("불러오기 실패"); });
+    });
+  })();
   (function attClock(){
     var d=new Date();
     var c=$("att-clock"); if(c) c.textContent = pad2(d.getHours())+":"+pad2(d.getMinutes());
@@ -2552,7 +2631,7 @@
         if(el) el.textContent = "매출 내역 (영업일 "+bizToday().slice(5).replace("-","/")+" · "+won((todaySales&&todaySales.total)||0)+")";
       }, function(){});
 
-      db.doc("attendance/"+localISO(new Date())).onSnapshot(function(snap){
+      db.doc("attendance/"+bizToday()).onSnapshot(function(snap){
         attToday = snap.exists ? (snap.data()||null) : null;
         if(currentView==="att") renderAttendance();
       }, function(){});
