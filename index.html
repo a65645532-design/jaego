@@ -71,7 +71,7 @@
     background:var(--ground); color:var(--ink);
     font-family:'IBM Plex Sans KR', 'Apple SD Gothic Neo', system-ui, -apple-system, 'Malgun Gothic', sans-serif;
     line-height:1.55; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
-    letter-spacing:-0.005em;
+    letter-spacing:-0.005em; overflow-x:hidden;
   }
   button{font-family:inherit; cursor:pointer; color:inherit}
   input,select{font-family:inherit; font-size:15px; color:var(--ink)}
@@ -214,7 +214,7 @@
     position:fixed; left:50%; transform:translate(-50%,100%); bottom:0; z-index:51;
     width:min(580px,100vw); background:var(--surface); border-radius:20px 20px 0 0;
     padding:10px 20px calc(24px + env(safe-area-inset-bottom)); transition:transform .24s cubic-bezier(.4,0,.2,1);
-    max-height:88vh; overflow-y:auto;
+    max-height:88vh; overflow-y:auto; overflow-x:hidden;
   }
   .sheet.on{transform:translate(-50%,0)}
   .grab{width:36px; height:4px; border-radius:99px; background:var(--line); margin:6px auto 16px}
@@ -227,6 +227,7 @@
   }
   .field textarea{min-height:54px; resize:vertical; line-height:1.5}
   .row2{display:flex; gap:10px}
+  .row2 input, .row2 select, .row2 textarea, .row2 button{min-width:0}
   .row2 .field{flex:1}
   .kv{display:flex; justify-content:space-between; font-size:13px; padding:5px 0; color:var(--ink-dim)}
   .kv b{color:var(--ink); font-weight:500}
@@ -487,7 +488,7 @@
     {o:18,cat:"Whisky",brand:"Yamazaki",name:"야마자키 12",form:"GLASS/BOTTLE",glass:39000,bottle:610000,unit:"병",stock:0,min:1,open:false},
     {o:19,cat:"Whisky",brand:"Hakushu",name:"하쿠슈 DR",form:"GLASS/BOTTLE",glass:26000,bottle:410000,unit:"병",stock:0,min:1,open:false},
     {o:20,cat:"Whisky",brand:"Hakushu",name:"하쿠슈 12",form:"GLASS/BOTTLE",glass:37000,bottle:580000,unit:"병",stock:0,min:1,open:false},
-    {o:21,cat:"Whisky",brand:"Hibiki",name:"히비키 재패니즈 하모니",form:"GLASS/BOTTLE",glass:26000,bottle:410000,unit:"병",stock:0,min:1,open:false},
+    {o:21,cat:"Whisky",brand:"Hibiki",name:"히비키 재패니즈 하모니",form:"GLASS/BOTTLE",glass:20000,bottle:410000,unit:"병",stock:0,min:1,open:false}, /* 2026-09-05 메뉴판 반영 26000→20000 — 기존 설치는 자동반영 안됨, 메뉴 판매가 관리에서 수동수정 필요 */
     {o:22,cat:"Whisky",brand:"Suntory",name:"산토리 가쿠빈",form:"GLASS/BOTTLE",glass:14000,bottle:220000,unit:"병",stock:1,min:2,open:true,note:"2병 입고 · 1병 오픈"},
     {o:23,cat:"Whisky",brand:"Kavalan",name:"카발란 디스틸러리 셀렉트 No.1",form:"GLASS/BOTTLE",glass:18000,bottle:280000,unit:"병",stock:0,min:1,open:false},
     {o:24,cat:"Whisky",brand:"Kavalan",name:"카발란 클래식",form:"GLASS/BOTTLE",glass:26000,bottle:410000,unit:"병",stock:0,min:1,open:false},
